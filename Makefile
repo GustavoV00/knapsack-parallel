@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall
+CFLAGS=-Wall -fopenmp
 # DEPS = hellomake.h
 
 # %.o: %.c $(DEPS)
@@ -13,13 +13,13 @@ run2:
 	./knapsack-parallel < knapsack.in
 
 %.o: %.c
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS) 
 
 serial: knapsack-serial.o 
-	$(CC) -o knapsack-serial knapsack-serial.o
+	$(CC) -o knapsack-serial knapsack-serial.o $(CFLAGS)
 
 parallel: knapsack-parallel.o
-	$(CC) -o knapsack-parallel knapsack-parallel.o
+	$(CC) -o knapsack-parallel knapsack-parallel.o $(CFLAGS)
 
 
 clean:
