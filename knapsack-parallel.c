@@ -69,17 +69,15 @@ int main() {
     int threadsFake = omp_get_num_threads();
     int newN = n / threadsFake;
     int newW = W / threadsFake;
-    int *newVal = (int *)calloc(newN, sizeof(int));
-    int *newWt = (int *)calloc(newN, sizeof(int));
 
     if (id == 0)
       threadsReal = threadsFake;
 
-    resultTest[id] = knapSack(newW * id, wt, val, newN * id);
+    resultTest[id] = knapSack(newW, wt + (id * newN), val + (id * newN), newN);
   }
 
   int sum = 0;
-  for (int i = 0; i < NUM_THREADS; i++) {
+  for (int i = 0; i < threadsReal; i++) {
     sum += resultTest[i];
   }
   printf("Soma final: %d\n", sum);
