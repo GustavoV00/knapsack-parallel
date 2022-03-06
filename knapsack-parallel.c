@@ -1,9 +1,12 @@
 /* A Naive recursive implementation
 of 0-1 Knapsack problem */
 // #include <omp.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+
+#define NUM_THREADS 2
 
 double timestamp(void) {
   struct timeval tp;
@@ -26,6 +29,7 @@ int knapSack(int W, int wt[], int val[], int n) {
   // If weight of the nth item is more than
   // Knapsack capacity W, then this item cannot
   // be included in the optimal solution
+
   if (wt[n - 1] > W)
     return knapSack(W, wt, val, n - 1);
 
@@ -42,17 +46,45 @@ int knapSack(int W, int wt[], int val[], int n) {
 // Driver program to test above function
 int main() {
   int n, W;
+  double time;
+  int threadsReal;
+  int resultTest[NUM_THREADS];
 
   scanf("%d %d", &n, &W);
   int *val = (int *)calloc(n, sizeof(int));
   int *wt = (int *)calloc(n, sizeof(int));
 
   int i;
-  // #pragma omp parallel for
+  // int nthrds;
+#pragma omp for
   for (i = 0; i < n; ++i) {
     scanf("%d %d", &(val[i]), &(wt[i]));
   }
 
-  printf("%d", knapSack(W, wt, val, n));
+  time = timestamp();
+
+#pragma omp parallel num_threads(NUM_THREADS)
+  {
+    int id = omp_get_thread_num();
+    int threadsFake = omp_get_num_threads();
+    int newN = n / threadsFake;
+    int newW = W / threadsFake;
+    int *newVal = (int *)calloc(newN, sizeof(int));
+    int *newWt = (int *)calloc(newN, sizeof(int));
+
+    if (id == 0)
+      threadsReal = threadsFake;
+
+    resultTest[id] = knapSack(newW * id, wt, val, newN * id);
+  }
+
+  int sum = 0;
+  for (int i = 0; i < NUM_THREADS; i++) {
+    sum += resultTest[i];
+  }
+  printf("Soma final: %d\n", sum);
+
+  time = timestamp() - time;
+  printf("Tempo: %.6lf\n", time);
   return 0;
 }
