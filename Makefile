@@ -24,3 +24,5 @@ parallel: knapsack-parallel.o
 
 clean:
 	rm *.o
+	rm knapsack-serial
+	rm knapsack-parallel
