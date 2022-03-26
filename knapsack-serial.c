@@ -31,9 +31,15 @@ int knapSack(int W, int wt[], int val[], int n) {
   // Return the maximum of two cases:
   // (1) nth item included
   // (2) not included
-  else
-    return max(val[n - 1] + knapSack(W - wt[n - 1], wt, val, n - 1),
-               knapSack(W, wt, val, n - 1));
+  else {
+    int result = max(val[n - 1] + knapSack(W - wt[n - 1], wt, val, n - 1),
+                     knapSack(W, wt, val, n - 1));
+
+    // printf("Imprimindo o resultado: %d %d %d %d\n", result, n - 1, val[n -
+    // 1],
+    //        wt[n - 1]);
+    return result;
+  }
 }
 
 // Driver program to test above function

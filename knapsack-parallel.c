@@ -1,6 +1,5 @@
 /* A Naive recursive implementation
 of 0-1 Knapsack problem */
-// #include <omp.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +22,7 @@ int max(int a, int b) { return (a > b) ? a : b; }
 // put in a knapsack of capacity W
 int knapSack(int W, int wt[], int val[], int n) {
   // Base Case
+
   if (n == 0 || W == 0)
     return 0;
 
@@ -30,58 +30,62 @@ int knapSack(int W, int wt[], int val[], int n) {
   // Knapsack capacity W, then this item cannot
   // be included in the optimal solution
 
-  if (wt[n - 1] > W)
+  if (wt[n - 1] > W) {
+    // #pragma omp task shared(result)
+
+    // #pragma omp taskwait
     return knapSack(W, wt, val, n - 1);
+  }
 
   // Return the maximum of two cases:
   // (1) nth item included
   // (2) not included
-  else
-    return max(val[n - 1] + knapSack(W - wt[n - 1], wt, val, n - 1),
-               knapSack(W, wt, val, n - 1));
-}
+  else {
+    int max1 = 0, max2 = 0;
+    int result;
+    int test = val[n - 1];
+    int test2 = wt[n - 1];
 
-//// PARALELO ######
+#pragma omp parallel num_threads(NUM_THREADS)
+    {
+
+#pragma omp task
+      { max1 = test + knapSack(W - test2, wt, val, n - 1); }
+
+#pragma omp task
+      { max2 = knapSack(W, wt, val, n - 1); }
+    }
+    result = max(max1, max2);
+
+    printf("Imprimindo o resultado: %d %d %d %d %d\n", result, n - 1,
+           val[n - 1], wt[n - 1], omp_get_thread_num());
+    return result;
+  }
+}
 
 // Driver program to test above function
 int main() {
   int n, W;
   double time;
-  int threadsReal;
-  int resultTest[NUM_THREADS];
 
+  // n -> items
+  // W -> Peso máximo
   scanf("%d %d", &n, &W);
+
+  // val -> n_i
+  // wt -> w_i
   int *val = (int *)calloc(n, sizeof(int));
   int *wt = (int *)calloc(n, sizeof(int));
 
   int i;
-  // int nthrds;
-#pragma omp for
   for (i = 0; i < n; ++i) {
     scanf("%d %d", &(val[i]), &(wt[i]));
+    // printf("value: %d ", val[i]);
+    // printf("weight: %d\n", wt[i]);
   }
 
   time = timestamp();
-
-#pragma omp parallel num_threads(NUM_THREADS)
-  {
-    int id = omp_get_thread_num();
-    int threadsFake = omp_get_num_threads();
-    int newN = n / threadsFake;
-    int newW = W / threadsFake;
-
-    if (id == 0)
-      threadsReal = threadsFake;
-
-    resultTest[id] = knapSack(newW, wt + (id * newN), val + (id * newN), newN);
-  }
-
-  int sum = 0;
-  for (int i = 0; i < threadsReal; i++) {
-    sum += resultTest[i];
-  }
-  printf("Soma final: %d\n", sum);
-
+  printf("%d\n", knapSack(W, wt, val, n));
   time = timestamp() - time;
   printf("Tempo: %.6lf\n", time);
   return 0;
