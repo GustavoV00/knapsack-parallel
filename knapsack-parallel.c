@@ -43,11 +43,9 @@ int knapSack(int W, int wt[], int val[], int n) {
   else {
     int max1 = 0, max2 = 0;
     int result;
-    int test = val[n - 1];
-    int test2 = wt[n - 1];
 
 #pragma omp task shared(max1)
-    { max1 = test + knapSack(W - test2, wt, val, n - 1); }
+    { max1 = val[n - 1] + knapSack(W - wt[n - 1], wt, val, n - 1); }
 
 #pragma omp task shared(max2)
     { max2 = knapSack(W, wt, val, n - 1); }
@@ -62,7 +60,7 @@ int knapSack(int W, int wt[], int val[], int n) {
 }
 
 int main() {
-  // Driver program to test above function
+  // Driver program to val[n-1] above function
   // Driver program to val[n-1] above function
   omp_set_num_threads(4);
   int n, W;
