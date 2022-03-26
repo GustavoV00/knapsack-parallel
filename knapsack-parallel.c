@@ -46,25 +46,25 @@ int knapSack(int W, int wt[], int val[], int n) {
     int test = val[n - 1];
     int test2 = wt[n - 1];
 
-#pragma omp parallel num_threads(NUM_THREADS)
-    {
+#pragma omp task shared(max1)
+    { max1 = test + knapSack(W - test2, wt, val, n - 1); }
 
-#pragma omp task
-      { max1 = test + knapSack(W - test2, wt, val, n - 1); }
+#pragma omp task shared(max2)
+    { max2 = knapSack(W, wt, val, n - 1); }
 
-#pragma omp task
-      { max2 = knapSack(W, wt, val, n - 1); }
-    }
+#pragma omp taskwait
     result = max(max1, max2);
 
-    printf("Imprimindo o resultado: %d %d %d %d %d\n", result, n - 1,
-           val[n - 1], wt[n - 1], omp_get_thread_num());
+    // printf("Imprimindo o resultado: %d %d %d %d %d\n", result, n - 1,
+    //        val[n - 1], wt[n - 1], omp_get_thread_num());
     return result;
   }
 }
 
-// Driver program to test above function
 int main() {
+  // Driver program to test above function
+  // Driver program to val[n-1] above function
+  omp_set_num_threads(4);
   int n, W;
   double time;
 
@@ -83,9 +83,15 @@ int main() {
     // printf("value: %d ", val[i]);
     // printf("weight: %d\n", wt[i]);
   }
-
   time = timestamp();
-  printf("%d\n", knapSack(W, wt, val, n));
+#pragma omp parallel
+  {
+
+#pragma omp single
+
+    printf("%d\n", knapSack(W, wt, val, n));
+  }
+  time = timestamp() - time;
   time = timestamp() - time;
   printf("Tempo: %.6lf\n", time);
   return 0;
