@@ -42,10 +42,13 @@ int knapSack(int W, int wt[], int val[], int n) {
   }
 }
 
-// Driver program to test above function
 int main() {
+  // Driver program to val[n-1] above function
+  // Driver program to val[n-1] above function
+  // omp_set_num_threads(4);
   int n, W;
-  double time;
+  double tpivot1 = 0, tpivot2 = 0, tpivot3 = 0; // time counting
+  tpivot1 = timestamp();
 
   // n -> items
   // W -> Peso máximo
@@ -63,9 +66,9 @@ int main() {
     // printf("weight: %d\n", wt[i]);
   }
 
-  time = timestamp();
+  tpivot2 = timestamp();
   printf("%d\n", knapSack(W, wt, val, n));
-  time = timestamp() - time;
-  printf("Tempo: %.6lf\n", time);
+  tpivot3 = timestamp();
+  printf("Start:%.6lf\nFinish:%.6lf\n", tpivot3 - tpivot2, tpivot3 - tpivot1);
   return 0;
 }

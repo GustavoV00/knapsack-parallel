@@ -10,7 +10,7 @@ run1:
 	./knapsack-serial < knapsack.in
 
 run2:
-	./knapsack-parallel < knapsack.in
+	./knapsack-parallel < ./problems/large_scale/knapPI_1_10000_1000_1
 
 %.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS) 
