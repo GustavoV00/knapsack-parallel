@@ -1,4 +1,4 @@
-CC=gcc
+CC=gcc  -O3
 CFLAGS=-Wall -fopenmp
 # DEPS = hellomake.h
 
@@ -7,10 +7,10 @@ CFLAGS=-Wall -fopenmp
 all: serial parallel
 
 run1:
-	./knapsack-serial < knapsack.in
+	./knapsack-serial < problems/knapsack.in
 
 run2:
-	./knapsack-parallel < ./problems/large_scale/knapPI_1_10000_1000_1
+	./knapsack-parallel < problems/knapsack.in
 
 %.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS) 

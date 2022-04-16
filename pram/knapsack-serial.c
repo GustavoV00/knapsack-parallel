@@ -2,14 +2,7 @@
 of 0-1 Knapsack problem */
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
-
-double timestamp(void) {
-  struct timeval tp;
-  gettimeofday(&tp, NULL);
-
-  return ((double)(tp.tv_sec * 1000.0 + tp.tv_usec / 1000.0));
-}
+#include <time.h>
 
 // A utility function that returns
 // maximum of two integers
@@ -45,10 +38,13 @@ int knapSack(int W, int wt[], int val[], int n) {
 int main() {
   // Driver program to val[n-1] above function
   // Driver program to val[n-1] above function
-  // omp_set_num_threads(4);
   int n, W;
-  double tpivot1 = 0, tpivot2 = 0, tpivot3 = 0; // time counting
-  tpivot1 = timestamp();
+  // time_t init_seq = time(NULL);
+  clock_t init_seq, end_seq;
+  init_seq = clock();
+  // printf("%ld\n", init_seq);
+
+  // tpivot1 = timestamp();
 
   // n -> items
   // W -> Peso máximo
@@ -62,13 +58,14 @@ int main() {
   int i;
   for (i = 0; i < n; ++i) {
     scanf("%d %d", &(val[i]), &(wt[i]));
-    // printf("value: %d ", val[i]);
-    // printf("weight: %d\n", wt[i]);
   }
 
-  tpivot2 = timestamp();
-  printf("%d\n", knapSack(W, wt, val, n));
-  tpivot3 = timestamp();
-  printf("Start:%.6lf\nFinish:%.6lf\n", tpivot3 - tpivot2, tpivot3 - tpivot1);
+  int result = knapSack(W, wt, val, n - 1);
+  end_seq = clock();
+  double total1 = (double)(end_seq - init_seq) / CLOCKS_PER_SEC;
+
+  printf("%f\n", total1);
+
+  printf("%d\n", result);
   return 0;
 }
