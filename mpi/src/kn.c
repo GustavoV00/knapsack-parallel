@@ -49,32 +49,23 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   int size, taskid, numworkers, source, dest, rows, columns, offset, extras,
       linhasPerWorker, mtype, result;
 
-  rows = n + 1;
-  columns = MAXIMUM_CAPACITY + 1;
-
   MPI_Init(NULL, NULL);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
 
   int **v;
   if (taskid == 0) {
-    printf("Tamanho do n: %d\n", n);
-    printf("Tamanho da capacidade: %d\n", MAXIMUM_CAPACITY);
 
-    offset = columns / size;
-    extras = columns % size;
+    rows = (n + 1) / size;
+    columns = MAXIMUM_CAPACITY + 1;
+    extras = rows % size;
   }
-  MPI_Bcast(&offset, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&extras, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&columns, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  printf("Linhas: %d\n", rows);
+  printf("Colunas (Capacidade): %d\n", columns);
   printf("Offset: %d e Extra: %d do taskdi: %d\n", offset, extras, taskid);
-  if (extras > 0) {
-    printf("ENTREI AQUI PORRA\n");
-    columns = (offset * taskid) + extras;
-    v = get_matrix(rows, columns);
-  }
-  columns = offset * (taskid + 1);
-  printf("TAMANHO DA COLUNA: %d do taskid: %d\n", columns, taskid);
   v = get_matrix(rows, columns);
 
   // MPI_Scatter(v, n * MAXIMUM_CAPACITY / size, MPI_INT, v[taskid],
@@ -83,30 +74,32 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   // v Stores, for each (1 + i, j), the best profit for a knapscak
   // of capacity `j` considering every item k such that (0 <= k < i)
 
-  int i, j;
-  // // evaluate item `i`
-  for (i = 0; i < n; i++) {
-    for (j = 1; j < columns; j++) {
-      if (wt[i] <= j) { // could put item in knapsack
-        printf("ENTREI AQUI SEU CORNO com taskid: %d\n", taskid);
-        int previous_value = v[1 + i - 1][j];
-        int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
-        // is it better to keep what we already got,
+  // int i, j;
+  // offset = rows * taskid;
+  // for (i = 0; i < rows; i++) {
+  //   for (j = 1; j < columns; j++) {
+  //     if (wt[i + offset] <= j) { // could put item in knapsack
+  //       printf("ENTREI AQUI SEU CORNO com taskid: %d\n", taskid);
+  //       //       int previous_value = v[1 + i - 1][j];
+  //       //       int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
+  //       //       // is it better to keep what we already got,
 
-        //       // or is it better to swap whatever we have in the bag that
-        //       weights
-        //       // up
-        //       // to `j` and put item `i`?
-        v[1 + i][j] = max(previous_value, replace_items);
-        //       // int maxResult = v[1 + i][j];
-      } else {
-        //       // can't put item `i`
-        v[1 + i][j] = v[1 + i - 1][j];
-      }
-    }
-    printMatriz(v, rows, columns, taskid);
-    printf("\n");
-  }
+  //       //       //       // or is it better to swap whatever we have in the
+  //       bag
+  //       //       that
+  //       //       //       weights
+  //       //       //       // up
+  //       //       //       // to `j` and put item `i`?
+  //       //       v[1 + i][j] = max(previous_value, replace_items);
+  //       //       //       // int maxResult = v[1 + i][j];
+  //     } else {
+  //       //       //       // can't put item `i`
+  //       //       v[1 + i][j] = v[1 + i - 1][j];
+  //     }
+  //   }
+  //   //   printMatriz(v, rows, columns, taskid);
+  //   //   printf("\n");
+  // }
 
   // if (taskid == MASTER) {
   //   result = v[1 + n - 1][MAXIMUM_CAPACITY];
