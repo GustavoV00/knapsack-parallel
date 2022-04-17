@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define FROM_MASTER 1
+#define FROM_WORKER 2
+#define MASTER 0
+
 // A utility function that returns
 // maximum of two integers
 int max(int a, int b) { return (a > b) ? a : b; }
@@ -21,7 +25,19 @@ int **get_matrix(int rows, int columns) {
   for (i = 1; i < rows; i++)
     mat[i] = mat[0] + i * columns;
 
+  printf("test: %d\n", mat[0][0]);
+
   return mat;
+}
+
+void printMatriz(int **m, int linhas, int colunas, int taskid) {
+  printf("Taksid %d imprimiu a matriz\n", taskid);
+  for (int i = 0; i < linhas; i++) {
+    for (int j = 0; j < colunas; j++) {
+      printf("%d ", m[i][j]);
+    }
+    printf("\n");
+  }
 }
 
 void free_matrix(int **mat) {
@@ -30,68 +46,74 @@ void free_matrix(int **mat) {
 }
 
 int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
-  // Starta um comunicador mpi
+  int size, taskid, numworkers, source, dest, rows, columns, offset, extras,
+      linhasPerWorker, mtype, result;
+
+  rows = n + 1;
+  columns = MAXIMUM_CAPACITY + 1;
+
   MPI_Init(NULL, NULL);
-
-  // Tamanho do comunicador.
-  int size;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
 
-  // processor id, but its generally called rank.
-  int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  int **v;
+  if (taskid == 0) {
+    printf("Tamanho do n: %d\n", n);
+    printf("Tamanho da capacidade: %d\n", MAXIMUM_CAPACITY);
 
-  int **V;
-  if (rank == 0) {
-    int test = 0;
-    // Matrix-based solution (Alocate and starts its values with 0)
-    V = get_matrix(n + 1, MAXIMUM_CAPACITY + 1);
-    for (int i = 1; i < size; i++) {
-      MPI_Send(&V[0][0], (n ) * (MAXIMUM_CAPACITY ), MPI_INT, i, 10 + i,
-               MPI_COMM_WORLD);
+    offset = columns / size;
+    extras = columns % size;
+  }
+  MPI_Bcast(&offset, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&extras, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  printf("Offset: %d e Extra: %d do taskdi: %d\n", offset, extras, taskid);
+  if (extras > 0) {
+    printf("ENTREI AQUI PORRA\n");
+    columns = (offset * taskid) + extras;
+    v = get_matrix(rows, columns);
+  }
+  columns = offset * (taskid + 1);
+  printf("TAMANHO DA COLUNA: %d do taskid: %d\n", columns, taskid);
+  v = get_matrix(rows, columns);
 
-      printf("FOI ENVIADO\n");
-//      MPI_Recv(&test, 1, MPI_INT, i, 10 + i, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//      printf("Informação recebida do %d, com valor %d\n", i, test);
+  // MPI_Scatter(v, n * MAXIMUM_CAPACITY / size, MPI_INT, v[taskid],
+  //             n * MAXIMUM_CAPACITY / size, MPI_INT, 0, MPI_COMM_WORLD);
+
+  // v Stores, for each (1 + i, j), the best profit for a knapscak
+  // of capacity `j` considering every item k such that (0 <= k < i)
+
+  int i, j;
+  // // evaluate item `i`
+  for (i = 0; i < n; i++) {
+    for (j = 1; j < columns; j++) {
+      if (wt[i] <= j) { // could put item in knapsack
+        printf("ENTREI AQUI SEU CORNO com taskid: %d\n", taskid);
+        int previous_value = v[1 + i - 1][j];
+        int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
+        // is it better to keep what we already got,
+
+        //       // or is it better to swap whatever we have in the bag that
+        //       weights
+        //       // up
+        //       // to `j` and put item `i`?
+        v[1 + i][j] = max(previous_value, replace_items);
+        //       // int maxResult = v[1 + i][j];
+      } else {
+        //       // can't put item `i`
+        v[1 + i][j] = v[1 + i - 1][j];
+      }
     }
-  } else {
-    int enviado = 1;
-    for (int i = 1; i < size; i++) {
-      MPI_Recv(&V[0][0], (n ) * (MAXIMUM_CAPACITY ), MPI_INT, 0, 10 + i,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-
-//    MPI_Send(&enviado, 1, MPI_INT, 0, 10, MPI_COMM_WORLD);
+    printMatriz(v, rows, columns, taskid);
+    printf("\n");
   }
 
-  // V Stores, for each (1 + i, j), the best profit for a knapscak
-  // of capacity `j` considering every item k such that (0 <= k < i)
-  // int i, j;
-
-  // // evaluate item `i`
-  // for (i = 0; i < n; i++) {
-  //   for (j = 1; j <= MAXIMUM_CAPACITY; j++) {
-  //     if (wt[i] <= j) { // could put item in knapsack
-  //       int previous_value = V[1 + i - 1][j];
-  //       int replace_items = val[i] + V[1 + i - 1][j - wt[i]];
-
-  //       // is it better to keep what we already got,
-  //       // or is it better to swap whatever we have in the bag that weights
-  //       // up
-  //       // to `j` and put item `i`?
-  //       V[1 + i][j] = max(previous_value, replace_items);
-  //     } else {
-  //       // can't put item `i`
-  //       V[1 + i][j] = V[1 + i - 1][j];
-  //     }
-  //   }
+  // if (taskid == MASTER) {
+  //   result = v[1 + n - 1][MAXIMUM_CAPACITY];
   // }
+  // MPI_Bcast(&result, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  // int retval = V[1 + n - 1][MAXIMUM_CAPACITY];
-
-  if (rank == 0)
-    free_matrix(V);
-
+  free_matrix(v);
   MPI_Finalize();
   return 0;
 }
@@ -110,8 +132,7 @@ int main() {
   }
 
   int result = knapsack(W, wt, val, n);
-  if (result != -1)
-    printf("resultado: %d\n", result);
+  printf("resultado: %d\n", result);
 
   return 0;
 }
@@ -129,7 +150,7 @@ Job, Process, Task:
 MPI_Init(argc, argv):
   Cria todas as váriaveis, o comunicador é formado é formado em volta de todos
   esses processos que foram spawned (criados ?), e ranks únicos são associados a
-  cada processo.
+cada processo.
 
 MPI-Comm_size():
   return the size of the communicator
