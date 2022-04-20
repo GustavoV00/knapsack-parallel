@@ -25,19 +25,23 @@ int **get_matrix(int rows, int columns) {
   for (i = 1; i < rows; i++)
     mat[i] = mat[0] + i * columns;
 
-  printf("test: %d\n", mat[0][0]);
+  // printf("test: %d\n", mat[0][0]);
 
   return mat;
 }
 
-void printMatriz(int **m, int linhas, int colunas, int taskid) {
-  printf("Taksid %d imprimiu a matriz\n", taskid);
+void printMatriz(int **m, int linhas, int colunas, int taskid, int val,
+                 int peso) {
+  printf("/***********************************/\n");
+  printf("Taksid %d imprimiu a matriz valor: %d e peso %d\n", taskid, val,
+         peso);
   for (int i = 0; i < linhas; i++) {
     for (int j = 0; j < colunas; j++) {
       printf("%d ", m[i][j]);
     }
     printf("\n");
   }
+  printf("/***********************************/\n");
 }
 
 void free_matrix(int **mat) {
@@ -49,63 +53,103 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   int size, taskid, numworkers, source, dest, rows, columns, offset, extras,
       linhasPerWorker, mtype, result;
 
+  MPI_Status status;
+
   MPI_Init(NULL, NULL);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
 
   int **v;
   if (taskid == 0) {
+    rows = n + 1;
+    columns = (MAXIMUM_CAPACITY + 1);
 
-    rows = (n + 1) / size;
-    columns = MAXIMUM_CAPACITY + 1;
-    extras = rows % size;
+    printf("test: w[%d] = %d\n", 3, wt[3]);
+    printf("test: w[%d] = %d\n", 4, wt[4]);
+
+    printf("Linhas-n: %d\n", n);
+    printf("Linhas: %d\n", rows);
+    printf("Colunas: %d\n", MAXIMUM_CAPACITY);
+    printf("Colunas (Capacidade): %d\n", columns);
+    for (int i = 1; i < size; i++) {
+      MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+      MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    }
   }
-  MPI_Bcast(&extras, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
   MPI_Bcast(&columns, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  printf("Linhas: %d\n", rows);
-  printf("Colunas (Capacidade): %d\n", columns);
-  printf("Offset: %d e Extra: %d do taskdi: %d\n", offset, extras, taskid);
+
+  if (taskid > 0) {
+    wt = (int *)malloc((rows - 1) * sizeof(int));
+    val = (int *)malloc((rows - 1) * sizeof(int));
+    MPI_Recv(&wt[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(&val[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+  }
+
   v = get_matrix(rows, columns);
+  printMatriz(v, rows, columns, taskid, -1, -1);
 
   // MPI_Scatter(v, n * MAXIMUM_CAPACITY / size, MPI_INT, v[taskid],
   //             n * MAXIMUM_CAPACITY / size, MPI_INT, 0, MPI_COMM_WORLD);
 
   // v Stores, for each (1 + i, j), the best profit for a knapscak
   // of capacity `j` considering every item k such that (0 <= k < i)
+  int i, j;
+  for (i = taskid; i < rows - 1; i += size) {
+    for (j = 1; j <= columns - 1; j++) {
+      if (taskid == 0) {
+        if (wt[i] <= j) {
+          if (i != 0 && taskid != 0)
+            MPI_Recv(&v[i][j], 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD,
+                     &status);
+          printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
+          int previous_value = v[1 + i - 1][j];
+          int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
+          printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
+                 "e %d | taskdi: %d e linha: %d\n",
+                 previous_value, replace_items, i + 1, j, taskid, i);
 
-  // int i, j;
-  // offset = rows * taskid;
-  // for (i = 0; i < rows; i++) {
-  //   for (j = 1; j < columns; j++) {
-  //     if (wt[i + offset] <= j) { // could put item in knapsack
-  //       printf("ENTREI AQUI SEU CORNO com taskid: %d\n", taskid);
-  //       //       int previous_value = v[1 + i - 1][j];
-  //       //       int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
-  //       //       // is it better to keep what we already got,
+          v[1 + i][j] = max(previous_value, replace_items);
+        } else {
+          printf("CAI AQUI NO 1° ELSE\n");
+          v[1 + i][j] = v[1 + i - 1][j];
+        }
+        MPI_Send(&v[i + 1][j], 1, MPI_INT, (i + 1) % size, i + 1,
+                 MPI_COMM_WORLD);
+        printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+      }
+      if (taskid > 0) {
+        MPI_Recv(&v[i][j], 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD,
+                 &status);
 
-  //       //       //       // or is it better to swap whatever we have in the
-  //       bag
-  //       //       that
-  //       //       //       weights
-  //       //       //       // up
-  //       //       //       // to `j` and put item `i`?
-  //       //       v[1 + i][j] = max(previous_value, replace_items);
-  //       //       //       // int maxResult = v[1 + i][j];
-  //     } else {
-  //       //       //       // can't put item `i`
-  //       //       v[1 + i][j] = v[1 + i - 1][j];
-  //     }
-  //   }
-  //   //   printMatriz(v, rows, columns, taskid);
-  //   //   printf("\n");
-  // }
+        if (wt[i] <= j) {
+          printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
+          int previous_value = v[1 + i - 1][j];
+          int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
+          printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
+                 "e %d | taskdi: %d e linha: %d\n",
+                 previous_value, replace_items, i + 1, j, taskid, i);
+          v[1 + i][j] = max(previous_value, replace_items);
+        } else {
+          v[1 + i][j] = v[1 + i - 1][j];
+        }
+        printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+        MPI_Send(&v[i + 1][j], columns, MPI_INT, (i + 1) % taskid, i + 1,
+                 MPI_COMM_WORLD);
+      }
+    }
+    //   printMatriz(v, rows, columns, taskid);
+    //   printf("\n");
+  }
 
+  // RECEBE AS MENSAGENS AQUI PARA CALCULAR O RESULTADO FINAL.
   // if (taskid == MASTER) {
   //   result = v[1 + n - 1][MAXIMUM_CAPACITY];
   // }
   // MPI_Bcast(&result, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+  printMatriz(v, rows, columns, taskid, val[i], wt[i]);
   free_matrix(v);
   MPI_Finalize();
   return 0;
