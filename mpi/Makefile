@@ -60,7 +60,7 @@ run:
 run2:
 	# mpirun --hostfile host_file --np 2 kn < testes/knapsack.in
 	clear
-	mpirun --np 2 kn < testes/knapsack.in
+	mpirun --np 4 kn < testes/knapsack.in
 
 teste: ../build/teste.o ../build/grafo.o
 	$(CC) $(CFLAGS) -o $@ $^

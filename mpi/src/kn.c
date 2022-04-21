@@ -7,6 +7,8 @@
 #define FROM_WORKER 2
 #define MASTER 0
 
+int RESULTADO;
+
 // A utility function that returns
 // maximum of two integers
 int max(int a, int b) { return (a > b) ? a : b; }
@@ -33,8 +35,7 @@ int **get_matrix(int rows, int columns) {
 void printMatriz(int **m, int linhas, int colunas, int taskid, int val,
                  int peso) {
   printf("/***********************************/\n");
-  printf("Taksid %d imprimiu a matriz valor: %d e peso %d\n", taskid, val,
-         peso);
+  printf("Taksid %d imprimiu a matriz: %d e peso %d\n", taskid, val, peso);
   for (int i = 0; i < linhas; i++) {
     for (int j = 0; j < colunas; j++) {
       printf("%d ", m[i][j]);
@@ -47,6 +48,40 @@ void printMatriz(int **m, int linhas, int colunas, int taskid, int val,
 void free_matrix(int **mat) {
   free(mat[0]);
   free(mat);
+}
+
+int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
+  // Matrix-based solution
+  int **V = get_matrix(n + 1, MAXIMUM_CAPACITY + 1);
+
+  // V Stores, for each (1 + i, j), the best profit for a knapscak
+  // of capacity `j` considering every item k such that (0 <= k < i)
+  int i, j;
+
+  // evaluate item `i`
+  for (i = 0; i < n; i++) {
+    for (j = 1; j <= MAXIMUM_CAPACITY; j++) {
+      if (wt[i] <= j) { // could put item in knapsack
+        int previous_value = V[1 + i - 1][j];
+        int replace_items = val[i] + V[1 + i - 1][j - wt[i]];
+
+        // is it better to keep what we already got,
+        // or is it better to swap whatever we have in the bag that weights up
+        // to `j` and put item `i`?
+        V[1 + i][j] = max(previous_value, replace_items);
+      } else {
+        // can't put item `i`
+        V[1 + i][j] = V[1 + i - 1][j];
+      }
+    }
+  }
+
+  int retval = V[1 + n - 1][MAXIMUM_CAPACITY];
+
+  // printMatriz(V, n + 1, MAXIMUM_CAPACITY + 1, 0, -1, -1);
+  free_matrix(V);
+
+  return retval;
 }
 
 int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
@@ -64,13 +99,13 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
     rows = n + 1;
     columns = (MAXIMUM_CAPACITY + 1);
 
-    printf("test: w[%d] = %d\n", 3, wt[3]);
-    printf("test: w[%d] = %d\n", 4, wt[4]);
+    // printf("test: w[%d] = %d\n", 3, wt[3]);
+    // printf("test: w[%d] = %d\n", 4, wt[4]);
 
-    printf("Linhas-n: %d\n", n);
-    printf("Linhas: %d\n", rows);
-    printf("Colunas: %d\n", MAXIMUM_CAPACITY);
-    printf("Colunas (Capacidade): %d\n", columns);
+    // printf("Linhas-n: %d\n", n);
+    // printf("Linhas: %d\n", rows);
+    // printf("Colunas: %d\n", MAXIMUM_CAPACITY);
+    // printf("Colunas (Capacidade): %d\n", columns);
     for (int i = 1; i < size; i++) {
       MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
       MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -88,7 +123,7 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   }
 
   v = get_matrix(rows, columns);
-  printMatriz(v, rows, columns, taskid, -1, -1);
+  // printMatriz(v, rows, columns, taskid, -1, -1);
 
   // MPI_Scatter(v, n * MAXIMUM_CAPACITY / size, MPI_INT, v[taskid],
   //             n * MAXIMUM_CAPACITY / size, MPI_INT, 0, MPI_COMM_WORLD);
@@ -97,62 +132,67 @@ int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   // of capacity `j` considering every item k such that (0 <= k < i)
   int i, j;
   for (i = taskid; i < rows - 1; i += size) {
-    for (j = 1; j <= columns - 1; j++) {
-      if (taskid == 0) {
-        if (wt[i] <= j) {
-          if (i != 0 && taskid != 0)
-            MPI_Recv(&v[i][j], 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD,
-                     &status);
-          printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
-          int previous_value = v[1 + i - 1][j];
-          int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
-          printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
-                 "e %d | taskdi: %d e linha: %d\n",
-                 previous_value, replace_items, i + 1, j, taskid, i);
-
-          v[1 + i][j] = max(previous_value, replace_items);
-        } else {
-          printf("CAI AQUI NO 1° ELSE\n");
-          v[1 + i][j] = v[1 + i - 1][j];
-        }
-        MPI_Send(&v[i + 1][j], 1, MPI_INT, (i + 1) % size, i + 1,
-                 MPI_COMM_WORLD);
-        printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+    for (j = 1; j < columns; j++) {
+      int auxI;
+      int auxJ;
+      int elem;
+      if (i > 0) {
+        MPI_Recv(&auxJ, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
+        MPI_Recv(&auxI, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
+        MPI_Recv(&elem, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
+        v[auxI][auxJ] = elem;
       }
-      if (taskid > 0) {
-        MPI_Recv(&v[i][j], 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD,
-                 &status);
 
-        if (wt[i] <= j) {
-          printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
-          int previous_value = v[1 + i - 1][j];
-          int replace_items = val[i] + v[1 + i - 1][j - wt[i]];
-          printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
-                 "e %d | taskdi: %d e linha: %d\n",
-                 previous_value, replace_items, i + 1, j, taskid, i);
-          v[1 + i][j] = max(previous_value, replace_items);
-        } else {
-          v[1 + i][j] = v[1 + i - 1][j];
-        }
-        printMatriz(v, rows, columns, taskid, val[i], wt[i]);
-        MPI_Send(&v[i + 1][j], columns, MPI_INT, (i + 1) % taskid, i + 1,
-                 MPI_COMM_WORLD);
+      if (wt[i] <= j) {
+        // printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
+        int previous_value = v[i][j];
+        int replace_items = val[i] + v[i][j - wt[i]];
+        // printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
+        // "e %d | taskdi: %d e linha: %d\n",
+        // previous_value, replace_items, i + 1, j, taskid, i);
+        v[1 + i][j] = max(previous_value, replace_items);
+        // printf("PRINT FORA DO ELSE DO: taskid: 0");
+        // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+      } else {
+        // printf("CAI AQUI NO 1° ELSE DO: taskdid: 0\n");
+        v[1 + i][j] = v[i][j];
+        // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
       }
+
+      {
+        int auxI = i + 1;
+        int auxJ = j;
+        int elem = v[i + 1][j];
+        MPI_Send(&auxJ, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
+        MPI_Send(&auxI, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
+        MPI_Send(&elem, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
+        // printf("MENSAGEM ENVIADA PARA O: %d\n", (i + 1) % size);
+      }
+      // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+      // }
     }
-    //   printMatriz(v, rows, columns, taskid);
-    //   printf("\n");
   }
 
-  // RECEBE AS MENSAGENS AQUI PARA CALCULAR O RESULTADO FINAL.
-  // if (taskid == MASTER) {
-  //   result = v[1 + n - 1][MAXIMUM_CAPACITY];
-  // }
-  // MPI_Bcast(&result, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  result = 0;
+  MPI_Bcast(&result, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if (v[rows - 1][columns - 1] != 0) {
+    // printf("taskid: %d\n", taskid);
+    // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+    result = v[rows - 1][columns - 1];
+    // printf("TESTE DE RESULTADO: %d\n", result);
+  }
+  if (taskid == 0) {
+    int result2 = knapsack_serial(MAXIMUM_CAPACITY, wt, val, n);
+    printf("RESULTADO DA MOCHILA SERIAL: %d\n", result2);
+  }
 
-  printMatriz(v, rows, columns, taskid, val[i], wt[i]);
+  // if (v[n][0] != 0) {
+  //   printf("ESTOU AQUI PORRA\n");
+  // }
+
   free_matrix(v);
   MPI_Finalize();
-  return 0;
+  return result;
 }
 
 // Driver program to test above function
@@ -169,152 +209,8 @@ int main() {
   }
 
   int result = knapsack(W, wt, val, n);
-  printf("resultado: %d\n", result);
+  if (result > 0)
+    printf("RESULTADO DA MOCHILA PARALELA: %d\n", result);
 
   return 0;
 }
-
-/*
-SOME NOTES
-
-Job, Process, Task:
-  Job is work that needs to be done.
-  A task is a piece of work that needs to be done.
-  The process is a series of actions that is done for a particular purpose.
-  Job and task define the work to be done, whereas process defines the way the
-  work can be done or how the work should be done.
-
-MPI_Init(argc, argv):
-  Cria todas as váriaveis, o comunicador é formado é formado em volta de todos
-  esses processos que foram spawned (criados ?), e ranks únicos são associados a
-cada processo.
-
-MPI-Comm_size():
-  return the size of the communicator
-  MPI_COMM_WORLD:
-    encloses all of the processes in the job, so this call should
-    return the amount of processes that were requested for the job.
-
-MPI_Comm_rank():
-   returns the rank of a process in a communicator.
-
-MPI_Get_processor_name():
-  obtains the actual name of the processor on which the process is executing.
-
-MPI_Finalize():
-  is used to clean up the MPI environment. No more MPI calls can be made after
-  this one.
-
-
-MPI_Wtime =
-
-MPI_Send(void *buf, int count, MPI_Datatype datatype,
-int dest, int tag, MPI_Comm comm)
-
-MPI_Recv(void *buf, int count, MPI_Datatype datatype,
-int source, int tag, MPI_Comm comm, MPI_Status *status)
-
-
-Um HelloWorld no estilo MPI.
-  if (!mpi_iniciou) {
-    // Numero de size
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-    // Pega a ordem (rank) dos size.
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-    char processor_name[MPI_MAX_PROCESSOR_NAME];
-    int name_len;
-    MPI_Get_processor_name(processor_name, &name_len);
-
-    printf("Hello world from processor %s, rank %d out of %d processors\n",
-           processor_name, world_rank, world_size);
-  }
-
-  MPI_Finalize();
-
-Exemplo de send e recv:
-  int token;
-  if (world_rank != 0) {
-      MPI_Recv(&token, 1, MPI_INT, world_rank - 1, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("Process %d received token %d from process %d\n",
-             world_rank, token, world_rank - 1);
-  } else {
-      // Set the token's value if you are process 0
-      token = -1;
-  }
-  MPI_Send(&token, 1, MPI_INT, (world_rank + 1) % world_size,
-           0, MPI_COMM_WORLD);
-
-  // Now process 0 can receive from the last process.
-  if (world_rank == 0) {
-      MPI_Recv(&token, 1, MPI_INT, world_size - 1, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("Process %d received token %d from process %d\n",
-             world_rank, token, world_size - 1);
-  }
-
-Exemplo de Mpi_status struct:
-  const int MAX_NUMBERS = 100;
-  int numbers[MAX_NUMBERS];
-  int number_amount;
-  if (world_rank == 0) {
-      // Pick a random amount of integers to send to process one
-      srand(time(NULL));
-      number_amount = (rand() / (float)RAND_MAX) * MAX_NUMBERS;
-
-      // Send the amount of integers to process one
-      MPI_Send(numbers, number_amount, MPI_INT, 1, 0, MPI_COMM_WORLD);
-      printf("0 sent %d numbers to 1\n", number_amount);
-  } else if (world_rank == 1) {
-      MPI_Status status;
-      // Receive at most MAX_NUMBERS from process zero
-      MPI_Recv(numbers, MAX_NUMBERS, MPI_INT, 0, 0, MPI_COMM_WORLD,
-               &status);
-
-      // After receiving the message, check the status to determine
-      // how many numbers were actually received
-      MPI_Get_count(&status, MPI_INT, &number_amount);
-
-      // Print off the amount of numbers, and also print additional
-      // information in the status object
-      printf("1 received %d numbers from 0. Message source = %d, "
-             "tag = %d\n",
-             number_amount, status.MPI_SOURCE, status.MPI_TAG);
-  }
-
-  int number_amount;
-  if (world_rank == 0) {
-      const int MAX_NUMBERS = 100;
-      int numbers[MAX_NUMBERS];
-      // Pick a random amount of integers to send to process one
-      srand(time(NULL));
-      number_amount = (rand() / (float)RAND_MAX) * MAX_NUMBERS;
-
-      // Send the random amount of integers to process one
-      MPI_Send(numbers, number_amount, MPI_INT, 1, 0, MPI_COMM_WORLD);
-      printf("0 sent %d numbers to 1\n", number_amount);
-  } else if (world_rank == 1) {
-      MPI_Status status;
-      // Probe for an incoming message from process zero
-      MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
-
-      // When probe returns, the status object has the size and other
-      // attributes of the incoming message. Get the message size
-      MPI_Get_count(&status, MPI_INT, &number_amount);
-
-      // Allocate a buffer to hold the incoming numbers
-      int* number_buf = (int*)malloc(sizeof(int) * number_amount);
-
-      // Now receive the message with the allocated buffer
-      MPI_Recv(number_buf, number_amount, MPI_INT, 0, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("1 dynamically received %d numbers from 0.\n",
-             number_amount);
-      free(number_buf);
-  }
-
-*/
