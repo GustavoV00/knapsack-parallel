@@ -7,8 +7,6 @@
 #define FROM_WORKER 2
 #define MASTER 0
 
-int RESULTADO;
-
 // A utility function that returns
 // maximum of two integers
 int max(int a, int b) { return (a > b) ? a : b; }
@@ -32,8 +30,8 @@ int **get_matrix(int rows, int columns) {
   return mat;
 }
 
-void printMatriz(int **m, int linhas, int colunas, int taskid, int val,
-                 int peso) {
+void print_matriz(int **m, int linhas, int colunas, int taskid, int val,
+                  int peso) {
   printf("/***********************************/\n");
   printf("Taksid %d imprimiu a matriz: %d e peso %d\n", taskid, val, peso);
   for (int i = 0; i < linhas; i++) {
@@ -76,123 +74,160 @@ int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
     }
   }
 
-  int retval = V[1 + n - 1][MAXIMUM_CAPACITY];
+  printf("/**********MOCHILA SERIAL***********/\n");
+  print_matriz(V, n + 1, MAXIMUM_CAPACITY + 1, 0, -1, -1);
+  int retval = V[n][MAXIMUM_CAPACITY];
+  printf("RESULTADO MOCHILA SERIAL: %d\n", retval);
+  printf("/**********MOCHILA SERIAL***********/\n");
 
-  // printMatriz(V, n + 1, MAXIMUM_CAPACITY + 1, 0, -1, -1);
   free_matrix(V);
 
   return retval;
 }
 
+void envia_mensagens_iniciais(int rows, int size, int *wt, int *val,
+                              int columns) {
+  for (int i = 1; i < size; i++) {
+    // MPI_Send(&rows, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    // MPI_Send(&columns, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+  }
+}
+
+int *recebe_pesos(int *wt, int rows, MPI_Status status) {
+  wt = (int *)malloc((rows - 1) * sizeof(int));
+  MPI_Recv(&wt[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+  return wt;
+}
+
+int *recebe_valores(int *val, int rows, MPI_Status status) {
+  val = (int *)malloc((rows - 1) * sizeof(int));
+  MPI_Recv(&val[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+  return val;
+}
+
+void enviar_mensagem(int value, int size, int i) {
+  int elem = value;
+
+  MPI_Send(&elem, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
+}
+
+int **receber_mensagem(int **v, int j, int size, int i, MPI_Status status) {
+  int elem;
+
+  MPI_Recv(&elem, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
+  v[(i - 1) % size][j] = elem;
+  return v;
+}
+
+int **troca_valores_matriz(int **v, int size, int *wt, int *val, int j, int i,
+                           int id) {
+  int prev_i = id - 1;
+  int atual_i = id;
+  if (id == 0) {
+    prev_i = size - 1;
+  }
+
+  int previous_value = v[prev_i][j];
+  if (i == 0)
+    previous_value = 0;
+
+  int replace_items = val[i] + v[prev_i][j - wt[i]];
+
+  v[atual_i][j] = max(previous_value, replace_items);
+  return v;
+}
+
 int knapsack(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
-  int size, taskid, numworkers, source, dest, rows, columns, offset, extras,
-      linhasPerWorker, mtype, result;
+  int size, rows, columns, taskid, result, maior;
 
   MPI_Status status;
 
   MPI_Init(NULL, NULL);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
+  if (size == 1) {
+    result = knapsack_serial(MAXIMUM_CAPACITY, wt, val, n);
+    MPI_Finalize();
+    return result;
+  } else {
 
-  int **v;
-  if (taskid == 0) {
-    rows = n + 1;
-    columns = (MAXIMUM_CAPACITY + 1);
-
-    // printf("test: w[%d] = %d\n", 3, wt[3]);
-    // printf("test: w[%d] = %d\n", 4, wt[4]);
-
-    // printf("Linhas-n: %d\n", n);
-    // printf("Linhas: %d\n", rows);
-    // printf("Colunas: %d\n", MAXIMUM_CAPACITY);
-    // printf("Colunas (Capacidade): %d\n", columns);
-    for (int i = 1; i < size; i++) {
-      MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-      MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    int **v;
+    if (taskid == 0) {
+      rows = n + 1;
+      columns = (MAXIMUM_CAPACITY + 1);
+      envia_mensagens_iniciais(rows, size, wt, val, columns);
     }
-  }
 
-  MPI_Bcast(&columns, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&columns, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  if (taskid > 0) {
-    wt = (int *)malloc((rows - 1) * sizeof(int));
-    val = (int *)malloc((rows - 1) * sizeof(int));
-    MPI_Recv(&wt[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    MPI_Recv(&val[0], rows - 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-  }
-
-  v = get_matrix(rows, columns);
-  // printMatriz(v, rows, columns, taskid, -1, -1);
-
-  // MPI_Scatter(v, n * MAXIMUM_CAPACITY / size, MPI_INT, v[taskid],
-  //             n * MAXIMUM_CAPACITY / size, MPI_INT, 0, MPI_COMM_WORLD);
-
-  // v Stores, for each (1 + i, j), the best profit for a knapscak
-  // of capacity `j` considering every item k such that (0 <= k < i)
-  int i, j;
-  for (i = taskid; i < rows - 1; i += size) {
-    for (j = 1; j < columns; j++) {
-      int auxI;
-      int auxJ;
-      int elem;
-      if (i > 0) {
-        MPI_Recv(&auxJ, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
-        MPI_Recv(&auxI, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
-        MPI_Recv(&elem, 1, MPI_INT, (i - 1) % size, i, MPI_COMM_WORLD, &status);
-        v[auxI][auxJ] = elem;
-      }
-
-      if (wt[i] <= j) {
-        // printf("ESTOU AQUI taskdi: %d e linha: %d\n", taskid, i);
-        int previous_value = v[i][j];
-        int replace_items = val[i] + v[i][j - wt[i]];
-        // printf("Linha anterior: %d linha para ser trocada: %d | indices: %d "
-        // "e %d | taskdi: %d e linha: %d\n",
-        // previous_value, replace_items, i + 1, j, taskid, i);
-        v[1 + i][j] = max(previous_value, replace_items);
-        // printf("PRINT FORA DO ELSE DO: taskid: 0");
-        // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
-      } else {
-        // printf("CAI AQUI NO 1° ELSE DO: taskdid: 0\n");
-        v[1 + i][j] = v[i][j];
-        // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
-      }
-
-      {
-        int auxI = i + 1;
-        int auxJ = j;
-        int elem = v[i + 1][j];
-        MPI_Send(&auxJ, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
-        MPI_Send(&auxI, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
-        MPI_Send(&elem, 1, MPI_INT, (i + 1) % size, i + 1, MPI_COMM_WORLD);
-        // printf("MENSAGEM ENVIADA PARA O: %d\n", (i + 1) % size);
-      }
-      // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
-      // }
+    printf("ESTOU AQUI\n");
+    if (taskid > 0) {
+      wt = recebe_pesos(wt, rows, status);
+      val = recebe_valores(val, rows, status);
     }
-  }
 
-  result = 0;
-  MPI_Bcast(&result, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if (v[rows - 1][columns - 1] != 0) {
-    // printf("taskid: %d\n", taskid);
-    // printMatriz(v, rows, columns, taskid, val[i], wt[i]);
-    result = v[rows - 1][columns - 1];
-    // printf("TESTE DE RESULTADO: %d\n", result);
-  }
-  if (taskid == 0) {
-    int result2 = knapsack_serial(MAXIMUM_CAPACITY, wt, val, n);
-    printf("RESULTADO DA MOCHILA SERIAL: %d\n", result2);
-  }
+    v = get_matrix(size, columns);
 
-  // if (v[n][0] != 0) {
-  //   printf("ESTOU AQUI PORRA\n");
-  // }
+    int i, j;
+    for (i = taskid; i < rows - 1; i += size) {
+      for (j = 1; j < columns; j++) {
+        int id = i % size;
 
-  free_matrix(v);
-  MPI_Finalize();
-  return result;
+        if (taskid == 0) {
+          if (wt[i] <= j) {
+            if (i > 0)
+              v = receber_mensagem(v, j, size, i, status);
+
+            v = troca_valores_matriz(v, size, wt, val, j, i, id);
+
+          } else {
+            if (i > 0)
+              v = receber_mensagem(v, j, size, i, status);
+            v[id][j] = v[size - 1][j];
+          }
+
+          enviar_mensagem(v[id][j], size, i);
+        }
+        if (taskid > 0) {
+          if (wt[i] <= j) {
+
+            v = receber_mensagem(v, j, size, i, status);
+            v = troca_valores_matriz(v, size, wt, val, j, i, id);
+
+          } else {
+            v = receber_mensagem(v, j, size, i, status);
+            v[id][j] = v[id - 1][j];
+          }
+
+          enviar_mensagem(v[id][j], size, i);
+        }
+      }
+      print_matriz(v, size, columns, taskid, val[i], wt[i]);
+    }
+
+    // if (taskid > 0) {
+    //   int elem = v[taskid][columns - 1];
+    //   MPI_Send(&elem, 1, MPI_INT, 0, taskid, MPI_COMM_WORLD);
+    // }
+
+    maior = v[taskid][columns - 1];
+    // if (taskid == 0) {
+    //   maior = v[taskid][columns - 1];
+    //   int elem;
+    //   for (int i = taskid + 1; i < size; i++) {
+    //     MPI_Recv(&elem, 1, MPI_INT, i, i, MPI_COMM_WORLD, &status);
+    //     if (elem > maior)
+    //       maior = elem;
+    //   }
+    // }
+
+    free_matrix(v);
+    MPI_Finalize();
+    return maior;
+  }
 }
 
 // Driver program to test above function
@@ -210,7 +245,7 @@ int main() {
 
   int result = knapsack(W, wt, val, n);
   if (result > 0)
-    printf("RESULTADO DA MOCHILA PARALELA: %d\n", result);
+    printf("RESULTADO DA MOCHILA: %d\n", result);
 
   return 0;
 }

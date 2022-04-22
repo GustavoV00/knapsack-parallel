@@ -1,42 +1,7 @@
 C_FILES = $(wildcard src/*.c)
 O_FILES = $(C_FILES:src/%.c=build/%.o)
 CC = mpicc
-CFLAGS  = -std=c99 \
-	  -pipe \
-	  -ggdb3 -Wstrict-overflow=5 -fstack-protector-all \
-          -W -Wall -Wextra \
-	  -Wbad-function-cast \
-	  -Wcast-align \
-	  -Wcast-qual \
-	  -Wconversion \
-	  -Wfloat-equal \
-	  -Wformat-y2k \
-	  -Winit-self \
-	  -Winline \
-	  -Winvalid-pch \
-	  -Wmissing-declarations \
-	  -Wmissing-field-initializers \
-	  -Wmissing-format-attribute \
-	  -Wmissing-include-dirs \
-	  -Wmissing-noreturn \
-	  -Wmissing-prototypes \
-	  -Wnested-externs \
-	  -Wnormalized=nfc \
-	  -Wold-style-definition \
-	  -Woverlength-strings \
-	  -Wpacked \
-	  -Wpadded \
-	  -Wpointer-arith \
-	  -Wredundant-decls \
-	  -Wshadow \
-	  -Wsign-compare \
-	  -Wstack-protector \
-	  -Wstrict-aliasing=2 \
-	  -Wstrict-prototypes \
-	  -Wundef \
-	  -Wunsafe-loop-optimizations \
-	  -Wvolatile-register-var \
-	  -Wwrite-strings
+CFLAGS  = -W -Wall -Wextra 
 
 CC_VERBOSE = $(CC)
 CC_NO_VERBOSE = @echo "Building $@..."; $(CC)
@@ -58,15 +23,14 @@ run:
 	./kn < testes/knapsack.in
 
 run2:
-	# mpirun --hostfile host_file --np 2 kn < testes/knapsack.in
-	clear
-	mpirun --np 4 kn < testes/knapsack.in
+	mpirun --np 1 kn < testes/knapsack.in
 
+# mpirun --np 2 kn < testes/large_scale/knapPI_3_500_1000_1
 teste: ../build/teste.o ../build/grafo.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 kn: $(O_FILES)
-	$(V_CC) -o $@ $^
+	$(V_CC) $(CFLAGS) -o $@ $^
 
 docs:
 	doxygen configDoxygen
@@ -75,7 +39,7 @@ build:
 	@mkdir -p build
 
 build/%.o: src/%.c | build
-	$(CC) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	@echo Removing object files
