@@ -17,23 +17,21 @@ void free_matrix(int **mat);
 
 void imprimeInformacoesDaMochila(int capacidade, int quantidadeItens,
                                  int *valores, int *pesos);
-void envia_mensagens_iniciais(int rows, int size, int *wt, int *val,
-                              int columns);
+void envia_mensagens_iniciais(int rows, int size, int *wt, int *val);
 int *recebe_pesos(int *wt, int rows, MPI_Status status);
 int *recebe_valores(int *val, int rows, MPI_Status status);
 int **alocaMatriz(int subMatrizesLinhas, int cols, int taskid, int size,
-                  int subMatrizesLinhasExtras, int **matriz, int itens);
+                  int subMatrizesLinhasExtras, int **matriz, int itens,
+                  int capacidade);
 int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n);
 int **resolvedorBloco(int **matriz, int i, int j, int *valores, int *pesos,
-                      int iGlobal, int taskid);
-int **recebeLinha(int **matriz, int taskid, int recvRank, int tags,
-                  int subMatrizesColunas, int k, int cols);
-int **enviaLinha(int **matriz, int taskid, int sendRank, int tags,
-                 int subMatrizesColunas, int k, int cols,
+                      int iGlobal);
+int **recebeLinha(int **matriz, int recvRank, int k, int cols,
+                  MPI_Status status);
+int **enviaLinha(int **matriz, int sendRank, int k, int cols,
                  int subMatrizesLinhas);
 int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
-                      int rows, int cols, int taskid, int size,
-                      MPI_Status status);
+                      int cols, int taskid, int size, MPI_Status status);
 
 // diver program m to test above function
 int main() {
@@ -67,7 +65,7 @@ int main() {
   MPI_Bcast(&capacidade, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
   if (taskid == 0) {
-    envia_mensagens_iniciais(rows, size, pesos, valores, cols);
+    envia_mensagens_iniciais(rows, size, pesos, valores);
   }
 
   if (taskid > 0) {
@@ -82,11 +80,11 @@ int main() {
 
   } else {
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    printf("\n");
-    int result = knapsack_parallel(capacidade, pesos, valores, itens, rows,
-                                   cols, taskid, size, status);
-    printf("result: %d\n", result);
+    // printf("\n");
+    int result = knapsack_parallel(capacidade, pesos, valores, itens, cols,
+                                   taskid, size, status);
+    if (result >= 0)
+      printf("result: %d\n", result);
   }
 
   MPI_Finalize();
@@ -94,13 +92,12 @@ int main() {
 }
 
 int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
-                      int rows, int cols, int taskid, int size,
-                      MPI_Status status) {
+                      int cols, int taskid, int size, MPI_Status status) {
 
   // Matriz para memoization
   int recvRank = (taskid - 1) % size; // rank to receive data
   int sendRank = (taskid + 1) % size; // rank to send data
-  int **matriz;
+  int **matriz = NULL;
   int subMatrizesLinhas = itens / size;
   int subMatrizesLinhasExtras = 0;
 
@@ -110,95 +107,119 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
   int iniCol;
 
   matriz = alocaMatriz(subMatrizesLinhas, cols, taskid, size,
-                       subMatrizesLinhasExtras, matriz, itens);
+                       subMatrizesLinhasExtras, matriz, itens, capacidade);
 
   // printf("%d e %d\n", itens, capacidade);
+  int result = -1;
   int tags = 0;
   for (int k = 0; k < size; k++) {
-    int iGlobal = subMatrizesLinhas * taskid;
+    int iGlobal;
+    iGlobal = (subMatrizesLinhas * taskid);
 
     if (k == size - 1)
       subMatrizesColunasExtras = capacidade % size;
 
     if (taskid > 0) {
-      matriz = recebeLinha(matriz, taskid, recvRank, tags, subMatrizesColunas,
-                           k, cols);
+      matriz = recebeLinha(matriz, recvRank, k, cols, status);
       tags += 1;
     }
 
     tags += 1;
     if (taskid == size - 1)
       subMatrizesLinhasExtras = itens % size;
-    int iniLin = taskid > 0 ? 1 : 0;
+
     for (int i = 0; i < subMatrizesLinhas + subMatrizesLinhasExtras; i++) {
 
       iniCol = (k * subMatrizesColunas) + 1;
-      printf("iniCol: %d\n", iniCol);
-      int bound = (subMatrizesColunas * (k + 1)) + subMatrizesLinhasExtras;
+      // printf("iniCol: %d\n", iniCol);
+      int bound = (subMatrizesColunas * (k + 1)) + subMatrizesColunasExtras;
       for (int j = iniCol; j <= bound; j++) {
-        resolvedorBloco(matriz, i, j, valores, pesos, iGlobal, taskid);
+        resolvedorBloco(matriz, i, j, valores, pesos, iGlobal);
       }
+      if (taskid == size - 1)
+        result = matriz[i + 1][bound];
+
       iGlobal += 1;
-      print_matriz(matriz, subMatrizesLinhas, cols, taskid, -1, -1);
+      // if (taskid == 0)
+      //   print_matriz(matriz, subMatrizesLinhas + 1, cols, taskid, -1, -1);
+
+      // else if (taskid == size - 1)
+      //   print_matriz(matriz, subMatrizesLinhas + subMatrizesLinhasExtras + 1,
+      //                cols, taskid, -1, -1);
+      // else
+      //   print_matriz(matriz, subMatrizesLinhas + 2, cols, taskid, -1, -1);
     }
+
     if (taskid < size - 1) {
-      matriz = enviaLinha(matriz, taskid, sendRank, tags, subMatrizesColunas, k,
-                          cols, subMatrizesLinhas);
+      matriz = enviaLinha(matriz, sendRank, k, cols, subMatrizesLinhas);
     }
   }
 
-  // int retval = matriz[itens][capacidade];
-  // printf("reval: %d\n", retval);
+  // MPI_Barrier(MPI_COMM_WORLD);
+  // if (taskid == 0)
+  //   print_matriz(matriz, subMatrizesLinhas + 1, cols, taskid, -1, -1);
+
+  // else if (taskid == size - 1)
+  //   print_matriz(matriz, subMatrizesLinhas + subMatrizesLinhasExtras + 1,
+  //   cols,
+  //                taskid, -1, -1);
+  // else
+  //   print_matriz(matriz, subMatrizesLinhas + 1, cols, taskid, -1, -1);
+
+  // int result = -1;
+  // if (taskid == size - 1) {
+  //   result = matriz[subMatrizesLinhas + 2][cols];
+  // }
   free_matrix(matriz);
 
-  return 0;
+  return result;
 }
 
 int **resolvedorBloco(int **matriz, int i, int j, int *valores, int *pesos,
-                      int iGlobal, int taskid) {
+                      int iGlobal) {
 
-  if (pesos[iGlobal] <= j && taskid == 0) {
-    printf("iGloba: %d | valores: %d | anterior: %d | result: %d | indices: %d "
-           "e %d\n",
-           iGlobal, valores[iGlobal], matriz[i][j - pesos[iGlobal]],
-           valores[iGlobal] + matriz[i][j - pesos[iGlobal]], i, j);
+  if (pesos[iGlobal] <= j) {
+    // printf("iGloba: %d | valores: %d | anterior: %d | result: %d | indices:
+    // %d "
+    //        "e %d | taskid: %d\n",
+    // iGlobal, valores[iGlobal], matriz[i][j - pesos[iGlobal]],
+    // valores[iGlobal] + matriz[i][j - pesos[iGlobal]], iGlobal, j,
+    // taskid);
 
     int previous_value = matriz[i][j];
     int replace_items = valores[iGlobal] + matriz[i][j - pesos[iGlobal]];
 
     matriz[i + 1][j] = max(previous_value, replace_items);
   } else {
+    // printf("PQ? : %d | indices: %d e %d\n", matriz[i][j], iGlobal, j);
     matriz[i + 1][j] = matriz[i][j];
   }
   return matriz;
 }
 
-int **enviaLinha(int **matriz, int taskid, int sendRank, int tags,
-                 int subMatrizesColunas, int k, int cols,
+int **enviaLinha(int **matriz, int sendRank, int k, int cols,
                  int subMatrizesLinhas) {
+
   // printf("ESTOU AQUI ENVIADO PARA: %d\n", sendRank);
-  int offset = (k)*subMatrizesColunas;
-  printf("\n\n\n\n\n");
+  // printf("\n\n\n\n\n");
 
-  for (int u = 0; u < cols; u++) {
-    printf("%d ", matriz[subMatrizesLinhas - 1][u]);
-  }
+  // for (int u = 0; u <= cols; u++) {
+  //   printf("%d ", matriz[subMatrizesLinhas - 1][u]);
+  // }
 
-  printf("\n\n\n\n\n");
-  MPI_Send(&matriz[subMatrizesLinhas - 1][offset], cols, MPI_INT, sendRank, 0,
+  // printf("\n\n\n\n\n");
+  MPI_Send(&matriz[subMatrizesLinhas][0], cols, MPI_INT, sendRank, k,
            MPI_COMM_WORLD);
   return matriz;
 }
 
-int **recebeLinha(int **matriz, int taskid, int recvRank, int tags,
-                  int subMatrizesColunas, int k, int cols) {
-  // printf("TASK ENTROJU AQUI: %d\n", taskid);
-  int offset = k * subMatrizesColunas;
-  MPI_Recv(&matriz[0][offset], cols, MPI_INT, recvRank, 0, MPI_COMM_WORLD,
-           MPI_STATUS_IGNORE);
+int **recebeLinha(int **matriz, int recvRank, int k, int cols,
+                  MPI_Status status) {
+  // printf("Taskid: %d está recebendo de: %d\n", taskid, recvRank);
+  MPI_Recv(&matriz[0][0], cols, MPI_INT, recvRank, k, MPI_COMM_WORLD, &status);
   // printf("\n\n\n\n\n");
 
-  // for (int u = 0; u < cols; u++) {
+  // for (int u = 0; u <= cols; u++) {
   //   printf("%d ", matriz[0][u]);
   // }
   // printf("\n\n\n\n\n");
@@ -206,17 +227,22 @@ int **recebeLinha(int **matriz, int taskid, int recvRank, int tags,
 }
 
 int **alocaMatriz(int subMatrizesLinhas, int cols, int taskid, int size,
-                  int subMatrizesLinhasExtras, int **matriz, int itens) {
+                  int subMatrizesLinhasExtras, int **matriz, int itens,
+                  int capacidade) {
 
+  int subMatrizesColsExtras = capacidade % size;
   if (taskid == 0)
-    matriz = get_matrix(subMatrizesLinhas, cols);
+    matriz = get_matrix(subMatrizesLinhas + 1, cols + subMatrizesColsExtras);
 
   else if (taskid == size - 1) {
     subMatrizesLinhasExtras = itens % size;
-    matriz = get_matrix(subMatrizesLinhas + subMatrizesLinhasExtras + 1, cols);
+    // printf("subMatrizesLinhasExtras: %d\n", subMatrizesLinhasExtras);
+    matriz = get_matrix(subMatrizesLinhas + subMatrizesLinhasExtras + 2,
+                        cols + subMatrizesColsExtras);
+  } else {
+    matriz = get_matrix(subMatrizesLinhas + 2, cols + subMatrizesColsExtras);
   }
 
-  matriz = get_matrix(subMatrizesLinhas + 1, cols);
   return matriz;
 }
 
@@ -287,8 +313,7 @@ int **get_matrix(int rows, int columns) {
   return mat;
 }
 
-void envia_mensagens_iniciais(int rows, int size, int *wt, int *val,
-                              int columns) {
+void envia_mensagens_iniciais(int rows, int size, int *wt, int *val) {
   for (int i = 1; i < size; i++) {
     // MPI_Send(&rows, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
     // MPI_Send(&columns, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -335,7 +360,7 @@ int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
     }
   }
 
-  print_matriz(V, n + 1, MAXIMUM_CAPACITY + 1, 0, -1, -1);
+  // print_matriz(V, n + 1, MAXIMUM_CAPACITY + 1, 0, -1, -1);
   int retval = V[1 + n - 1][MAXIMUM_CAPACITY];
 
   free_matrix(V);
