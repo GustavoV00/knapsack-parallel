@@ -22,10 +22,18 @@ all: kn
 run:
 	./kn < testes/knapsack.in
 
-run2:
+run1:
 	mpirun --np 1 kn < testes/knapsack.in
 
-# mpirun --np 2 kn < testes/large_scale/knapPI_3_500_1000_1
+run2:
+	mpirun --np 2 kn < testes/knapsack.in
+
+run3:
+	mpirun --np 3 kn < testes/knapsack.in
+
+run4:
+	mpirun --np 4 kn < testes/large_scale/knapPI_1_1000_1000_1
+
 teste: ../build/teste.o ../build/grafo.o
 	$(CC) $(CFLAGS) -o $@ $^
 
