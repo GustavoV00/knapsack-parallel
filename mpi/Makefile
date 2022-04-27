@@ -1,7 +1,7 @@
 C_FILES = $(wildcard src/*.c)
 O_FILES = $(C_FILES:src/%.c=build/%.o)
 CC = mpicc
-CFLAGS  = -W -Wall -Wextra 
+CFLAGS  = -W -Wall -Wextra  -O3
 
 CC_VERBOSE = $(CC)
 CC_NO_VERBOSE = @echo "Building $@..."; $(CC)

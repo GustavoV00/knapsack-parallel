@@ -2,6 +2,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #define FROM_MASTER 1
 #define FROM_WORKER 2
@@ -30,6 +31,7 @@ int **recebeLinha(int **matriz, int recvRank, int k, int cols,
                   MPI_Status status);
 int **enviaLinha(int **matriz, int sendRank, int k, int cols,
                  int subMatrizesLinhas);
+float timedifference_msec(struct timeval t0, struct timeval t1);
 int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
                       int cols, int taskid, int size, MPI_Status status);
 
@@ -44,9 +46,14 @@ int main() {
 
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
+  struct timeval t0;
+  struct timeval t1;
+
   int rows, cols;
   int itens, capacidade;
   int *valores, *pesos;
+  if (taskid == size - 1)
+    gettimeofday(&t0, 0);
 
   if (taskid == 0) {
 
@@ -69,7 +76,9 @@ int main() {
   }
 
   if (taskid > 0) {
+    pesos = NULL;
     pesos = recebe_pesos(pesos, rows, status);
+    valores = NULL;
     valores = recebe_valores(valores, rows, status);
   }
   // imprimeInformacoesDaMochila(capacidade, itens, valores, pesos);
@@ -85,6 +94,15 @@ int main() {
                                    taskid, size, status);
     if (result >= 0)
       printf("result: %d\n", result);
+  }
+
+  if (taskid == size - 1) {
+    float elapsed;
+
+    gettimeofday(&t1, 0);
+
+    elapsed = timedifference_msec(t0, t1);
+    printf("time: %f\n", elapsed);
   }
 
   MPI_Finalize();
@@ -366,4 +384,8 @@ int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
   free_matrix(V);
 
   return retval;
+}
+float timedifference_msec(struct timeval t0, struct timeval t1) {
+  return (t1.tv_sec - t0.tv_sec) * 1000.0f +
+         (t1.tv_usec - t0.tv_usec) / 1000.0f;
 }
