@@ -16,162 +16,213 @@ def compilaTudo():
 class Data:
     def __init__(self, proc):
         self.proc = proc
-        self.tempoMedio = []
-        self.desvioPadraoTempoMedio = []
+        self.tempo = {
+            "tp": {
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {},
+            },
+            "tpSerial": {},
+            "tpMedio": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
+            },
+            "tpDesvioPadrao": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
+            }
+        }
 
-        self.speedup = []
-        self.speedUpMedia = []
-        self.speedUpDesvioPadrao = []
+        self.speedup = {
+            "sp": {
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {},
+            },
+            "spMedio": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
 
-        self.testes = testes = ["./testes/testRelatorio/in/teste1.in", "./testes/testRelatorio/in/teste2.in"]
-        self.saida = [f"./testes/testRelatorio/out/c{self.proc}/saida_mochila_{i}.out" for i in range(len(testes))]
+            },
+            "spDesvioPadrao": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
+            }
+        }
 
+        self.amdahl = []
 
+        self.eficiencia = {
+            "ef": {
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {},
+            },
+            "efMedio": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
 
-    def executaMochila(self):
+            },
+            "efDesvioPadrao": {
+                "1": [],
+                "2": [],
+                "3": [],
+                "4": [],
+            }
+        }
+
+    def executaMochila(self, proc, testes):
         i = 0
-        for elem in self.testes:
-            command = f"mpirun --np {self.proc} kn < {elem} >> ./testes/testRelatorio/out/c{self.proc}/saida_mochila_{i}.out"
+        for elem in testes:
+            command = f"mpirun --np {proc} kn < {elem} >> ./testes/testRelatorio/out/c{proc}/saida_mochila_{i}.out"
             print(command)
             for _ in range(20):
                 os.system(command)
             time.sleep(0.2)
             i += 1
 
-    def leTempo(self, tempo, elem):
+    def leTempo(self, elem):
+        result = []
+        result2 = []
         with open(elem) as file:
             lines = [line.rstrip() for line in file]
         for elem in lines:
             x = elem.split()
+            print(x)
+            if(x[1] == "time:"):
+                result.append(float(x[1]))
             if(x[0] == "time:"):
-                tempo.append(float(x[1]))
+                result.append(float(x[1]))
+            if(x[0] == "serialTime:"):
+                result2.append(float(x[1]))
+            if(x[1] == "serialTime:"):
+                result2.append(float(x[1]))
 
-        return tempo
+        return [result, result2]
+
 
     def mediaEDesvioPadrao(self, tempo):
         # print(tempo, type(tempo))
         media = np.average(tempo)
-        desvioPadrao = np.std(tempo, dtype=float)
-        return [media, desvioPadrao]
+        desvioPadrao = np.std(tempo)
+        return [round(media, 4), round(desvioPadrao, 4)]
 
     def obterSpeedUp(self, seq, paral):
+        result = []
         for i in range(len(paral)):
-            result = seq[i] / paral[i]
-            self.speedup.append(result)
+            x = seq[i] / paral[i]
+            result.append(round(x, 4))
+        return result
 
-class DataSeq(Data):
-    def __init__(self, proc):
-        super().__init__(proc)
-        self.tempoSequencial = []
-
-    def imprimeelementos(self):
-        print("proc: ", self.proc)
-        print("tempoMedio: ", self.tempoMedio)
-        print("tempoDesvioPadrao: ", self.desvioPadraoTempoMedio)
-
-        print("SpeedUp: ", self.speedup)
-        print("speedUpMedia: ", self.speedUpMedia)
-        print("speedUpDesvioPadrao: ", self.desvioPadraoTempoMedio)
-
-class DataPl(Data):
-    def __init__(self, proc):
-        super().__init__(proc)
-        self.tempoParalelo = []
-        self.porcentagemTempoSequencial = []
-        self.porcentagemTempoParalelo = []
-        self.tempoTotal = []
-        self.amdahl = []
-
-
-        self.eficiencia = []
-        self.eficienciaMedia = []
-        self.eficienciaDesvioPadrao = []
-
-    def obterSpeedUp(self, seq, paral):
-        for i in range(len(paral)):
-            result = seq[i] / paral[i]
-            self.speedup.append(result)
 
     def obterEficiencia(self, speedup, proc):
+        result = []
         for elem in speedup:
-            result = elem / proc
-            self.eficiencia.append(result)
+            x = elem / proc
+            result.append(round(x, 4))
 
-    def obterAmdahl(self, processors):
-        # seqPorcent = (media_seqParalTime * 100) / media_totalTime
-        # seqPorcent = seqPorcent / 100
+        return result
+
+    def obterAmdahl(self, processors, mediaSeqTime, mediaTotalTime):
+        seqPorcent = (mediaSeqTime * 100) / mediaTotalTime
+        seqPorcent = seqPorcent / 100
 
         amdal = 1 / ((1 - (0)) / processors) + 0
-        return amdal
+        return round(amdal, 4)
 
-    def imprimeelementos(self):
-        print("proc: ", self.proc)
-        print("tempoMedio: ", self.tempoMedio)
-        print("tempoDesvioPadrao: ", self.desvioPadraoTempoMedio)
 
-        print("SpeedUp: ", self.speedup)
-        print("speedUpMedia: ", self.speedUpMedia)
-        print("speedUpDesvioPadrao: ", self.desvioPadraoTempoMedio)
-
-        print("Eficiencia: ", self.eficiencia)
-        print("EficienciaMedia: ", self.eficienciaMedia)
-        print("EficienciaDesvioPadrao: ", self.eficienciaDesvioPadrao)
-
-        print("amdal: ", self.amdahl)
 
 def main():
 
-    c1 = DataSeq(1)
-    c2 = DataPl(2)
-    c3 = DataPl(3)
-    c4 = DataPl(4)
-    procs = [c2, c3, c4]
-    for elem in c1.saida:
+    testes = testes = ["./testes/testRelatorio/in/teste1.in", "./testes/testRelatorio/in/teste2.in"]
+    c1 = Data(1)
+    # c2 = DataPl(2)
+    # c3 = DataPl(3)
+    # c4 = DataPl(4)
+    procs = [2, 3, 4]
+    for i in range(len(testes)):
         compilaTudo()
-        c1.executaMochila()
-        c1.tempoSequencial = c1.leTempo(c1.tempoSequencial, elem)
-        [media, dv] = c1.mediaEDesvioPadrao(c1.tempoSequencial)
-        c1.tempoMedio.append(media)
-        c1.desvioPadraoTempoMedio.append(dv)
+        saida = [f"./testes/testRelatorio/out/c{1}/saida_mochila_{j}.out" for j in range(len(testes))]
+        c1.executaMochila(1, testes)
+        [result, result2] = c1.leTempo(saida[i])
 
-        c1.obterSpeedUp(c1.tempoSequencial, c1.tempoSequencial)
-        [mediaSp, dvSp] = c1.mediaEDesvioPadrao(c1.speedup)
-        c1.speedUpMedia.append(mediaSp)
-        c1.speedUpDesvioPadrao.append(dvSp)
-        for c in procs:
-            c.executaMochila()
-            for elem in c.saida:
-                c.tempoParalelo = c.leTempo(c.tempoParalelo, elem)
+        c1.tempo["tp"][f"{c1.proc}"].update({f"teste{i+1}": result})
+        c1.tempo["tpSerial"].update({f"teste{i+1}": result2})
 
-                [media, dv] = c.mediaEDesvioPadrao(c.tempoParalelo)
-                c.tempoMedio.append(media)
-                c.desvioPadraoTempoMedio.append(media)
+        tempo = c1.tempo["tp"][f"{c1.proc}"][f"teste{i+1}"]
+        [media, dv] = c1.mediaEDesvioPadrao(tempo)
+        c1.tempo["tpMedio"][f"{c1.proc}"].append(media)
+        c1.tempo["tpDesvioPadrao"][f"{c1.proc}"].append(dv)
 
-                c.obterSpeedUp(c1.tempoSequencial, c.tempoParalelo)
-                [mediaSp, dvSp] = c.mediaEDesvioPadrao(c.speedup)
-                c.speedUpMedia.append(mediaSp)
-                c.speedUpDesvioPadrao.append(dvSp)
+        speedUp = c1.obterSpeedUp(tempo, tempo)
+        c1.speedup["sp"][f"{c1.proc}"].update({f"speedup{i+1}": speedUp})
 
-                c.obterEficiencia(c.speedup, c.proc)
-                [mediaEf, dvEf] = c.mediaEDesvioPadrao(c.eficiencia)
-                c.speedUpMedia.append(mediaEf)
-                c.speedUpDesvioPadrao.append(dvEf)
+        [mediaSp, dvSp] = c1.mediaEDesvioPadrao(speedUp)
+        c1.speedup["spMedio"][f"{c1.proc}"].append(mediaSp)
+        c1.speedup["spDesvioPadrao"][f"{c1.proc}"].append(dvSp)
 
-                c.obterAmdahl(c.proc)
-                c.tempoParalelo.clear()
-        c1.tempoSequencial.clear()
+        eficiencia = c1.obterEficiencia(speedUp, 1)
+        c1.eficiencia["ef"][f"{1}"].update({f"eficiencia{i+1}": eficiencia})
+
+        [mediaEf, dvEf] = c1.mediaEDesvioPadrao(eficiencia)
+        c1.eficiencia["efMedio"][f"{1}"].append(mediaEf)
+        c1.eficiencia["efDesvioPadrao"][f"{1}"].append(dvEf)
+
+        for proc in procs:
+            compilaTudo()
+            saida = [f"./testes/testRelatorio/out/c{proc}/saida_mochila_{j}.out" for j in range(len(testes))]
+            c1.executaMochila(proc, testes)
+
+            k = i
+            [result, result2] = c1.leTempo(saida[i])
+            c1.tempo["tp"][f"{proc}"].update({f"teste{k+1}": result})
+            c1.tempo["tpSerial"].update({f"teste{k+1}": result2})
+            tempo2 = c1.tempo["tp"][f"{proc}"][f"teste{k+1}"]
+            mediaSeqTime = c1.tempo["tpSerial"][f"teste{k+1}"]
+            mediaSeqTime = np.average(mediaSeqTime)
+
+            [media, dv] = c1.mediaEDesvioPadrao(tempo2)
+            c1.tempo["tpMedio"][f"{proc}"].append(media)
+            c1.tempo["tpDesvioPadrao"][f"{proc}"].append(dv)
+
+            speedUp = c1.obterSpeedUp(tempo, tempo2)
+            c1.speedup["sp"][f"{proc}"].update({f"speedup{k+1}": speedUp})
+
+            [mediaSp, dvSp] = c1.mediaEDesvioPadrao(speedUp)
+            c1.speedup["spMedio"][f"{proc}"].append(mediaSp)
+            c1.speedup["spDesvioPadrao"][f"{proc}"].append(dvSp)
+
+            eficiencia = c1.obterEficiencia(speedUp, proc)
+            c1.eficiencia["ef"][f"{proc}"].update({f"eficiencia{k+1}": eficiencia})
+
+            [mediaEf, dvEf] = c1.mediaEDesvioPadrao(eficiencia)
+            c1.eficiencia["efMedio"][f"{proc}"].append(mediaEf)
+            c1.eficiencia["efDesvioPadrao"][f"{proc}"].append(dvEf)
+
+            parallelTime = c1.tempo["tpMedio"][f"{proc}"][k] - mediaSeqTime
+            amdahl = c1.obterAmdahl(c1.proc, mediaSeqTime, parallelTime)
+            c1.amdahl.append(amdahl)
+            k += 1
+
+    print(c1.tempo, "\n\n\n\n\n")
+    print(c1.speedup, "\n\n\n\n\n")
+    print(c1.eficiencia, "\n\n\n\n\n")
+    print(c1.amdahl, "\n\n\n\n\n")
 
 
-    c1.imprimeelementos()
-    print("\n\n\n\n")
-
-    c2.imprimeelementos()
-    print("\n\n\n\n")
-
-    c3.imprimeelementos()
-    print("\n\n\n\n")
-
-    c4.imprimeelementos()
 
 
 if __name__ == "__main__":

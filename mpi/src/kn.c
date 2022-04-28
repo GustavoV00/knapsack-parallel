@@ -46,8 +46,11 @@ int main() {
 
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
+  float serialTime = 0;
   struct timeval t0;
   struct timeval t1;
+  struct timeval serialIni;
+  struct timeval serialFim;
 
   int rows, cols;
   int itens, capacidade;
@@ -56,6 +59,7 @@ int main() {
     gettimeofday(&t0, 0);
 
   if (taskid == 0) {
+    gettimeofday(&serialIni, 0);
 
     scanf("%d %d", &itens, &capacidade);
     valores = (int *)calloc(itens, sizeof(int));
@@ -64,6 +68,8 @@ int main() {
     rows = itens + 1;
     cols = capacidade + 1;
     leArquivosDeEntrada(pesos, valores, itens);
+    gettimeofday(&serialFim, 0);
+    serialTime += timedifference_msec(serialIni, serialFim);
   }
 
   MPI_Bcast(&cols, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -72,7 +78,10 @@ int main() {
   MPI_Bcast(&capacidade, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
   if (taskid == 0) {
+    gettimeofday(&serialIni, 0);
     envia_mensagens_iniciais(rows, size, pesos, valores);
+    gettimeofday(&serialFim, 0);
+    serialTime += timedifference_msec(serialIni, serialFim);
   }
 
   if (taskid > 0) {
@@ -88,8 +97,9 @@ int main() {
     printf("result: %d\n", result);
 
   } else {
-
-    // printf("\n");
+    gettimeofday(&serialIni, 0);
+    gettimeofday(&serialFim, 0);
+    serialTime += timedifference_msec(serialIni, serialFim);
     int result = knapsack_parallel(capacidade, pesos, valores, itens, cols,
                                    taskid, size, status);
     if (result >= 0)
@@ -97,11 +107,15 @@ int main() {
   }
 
   if (taskid == size - 1) {
+    gettimeofday(&serialIni, 0);
     float elapsed;
 
     gettimeofday(&t1, 0);
 
     elapsed = timedifference_msec(t0, t1);
+    gettimeofday(&serialFim, 0);
+    serialTime += timedifference_msec(serialIni, serialFim);
+    printf("serialTime: %f\n", serialTime);
     printf("time: %f\n", elapsed);
   }
 
@@ -154,6 +168,7 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
       for (int j = iniCol; j <= bound; j++) {
         resolvedorBloco(matriz, i, j, valores, pesos, iGlobal);
       }
+
       if (taskid == size - 1)
         result = matriz[i + 1][bound];
 
