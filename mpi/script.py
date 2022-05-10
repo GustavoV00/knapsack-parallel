@@ -23,7 +23,14 @@ class Data:
                 "3": {},
                 "4": {},
             },
-            "tpSerial": {},
+            "tpSerial": {
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {},
+            },
+            "tpSerialMedio": [],
+            "tpSerialDesvioPadrao": [],
             "tpMedio": {
                 "1": [],
                 "2": [],
@@ -113,7 +120,6 @@ class Data:
 
         return [result, result2]
 
-
     def mediaEDesvioPadrao(self, tempo):
         # print(tempo, type(tempo))
         media = np.average(tempo)
@@ -127,7 +133,6 @@ class Data:
             result.append(round(x, 4))
         return result
 
-
     def obterEficiencia(self, speedup, proc):
         result = []
         for elem in speedup:
@@ -136,18 +141,27 @@ class Data:
 
         return result
 
-    def obterAmdahl(self, processors, mediaSeqTime, mediaTotalTime):
-        seqPorcent = (mediaSeqTime * 100) / mediaTotalTime
-        seqPorcent = seqPorcent / 100
+    def obterAmdahl(self, processors, mediaSeqTime):
+        # seqPorcent = (mediaSeqTime * 100) / mediaTotalTime
+        # seqPorcent = seqPorcent / 100
 
-        amdal = 1 / ((1 - (0)) / processors) + 0
+        amdal = 1 / ((1 - (mediaSeqTime)) / processors) + mediaSeqTime
         return round(amdal, 4)
 
+    def calculaPorcent(self, lista, totalTime):
+        result = []
+        for i in lista: 
+            seqPorcent = (i * 100) / totalTime
+            seqPorcent = seqPorcent / 100
+            result.append(seqPorcent)
 
+        return result
+    
 
 def main():
 
-    testes = testes = ["./testes/testRelatorio/in/teste1.in", "./testes/testRelatorio/in/teste2.in"]
+    path = "./testes/testRelatorio/in"
+    testes = testes = [f"{path}/teste7.in"]
     c1 = Data(1)
     # c2 = DataPl(2)
     # c3 = DataPl(3)
@@ -158,9 +172,10 @@ def main():
         saida = [f"./testes/testRelatorio/out/c{1}/saida_mochila_{j}.out" for j in range(len(testes))]
         c1.executaMochila(1, testes)
         [result, result2] = c1.leTempo(saida[i])
+        print(result, result2)
 
         c1.tempo["tp"][f"{c1.proc}"].update({f"teste{i+1}": result})
-        c1.tempo["tpSerial"].update({f"teste{i+1}": result2})
+        c1.tempo["tpSerial"][f"{c1.proc}"].update({f"teste{i+1}": result2})
 
         tempo = c1.tempo["tp"][f"{c1.proc}"][f"teste{i+1}"]
         [media, dv] = c1.mediaEDesvioPadrao(tempo)
@@ -180,6 +195,7 @@ def main():
         [mediaEf, dvEf] = c1.mediaEDesvioPadrao(eficiencia)
         c1.eficiencia["efMedio"][f"{1}"].append(mediaEf)
         c1.eficiencia["efDesvioPadrao"][f"{1}"].append(dvEf)
+        
 
         for proc in procs:
             compilaTudo()
@@ -189,10 +205,8 @@ def main():
             k = i
             [result, result2] = c1.leTempo(saida[i])
             c1.tempo["tp"][f"{proc}"].update({f"teste{k+1}": result})
-            c1.tempo["tpSerial"].update({f"teste{k+1}": result2})
+            c1.tempo["tpSerial"][f"{proc}"].update({f"teste{k+1}": result2})
             tempo2 = c1.tempo["tp"][f"{proc}"][f"teste{k+1}"]
-            mediaSeqTime = c1.tempo["tpSerial"][f"teste{k+1}"]
-            mediaSeqTime = np.average(mediaSeqTime)
 
             [media, dv] = c1.mediaEDesvioPadrao(tempo2)
             c1.tempo["tpMedio"][f"{proc}"].append(media)
@@ -212,14 +226,33 @@ def main():
             c1.eficiencia["efMedio"][f"{proc}"].append(mediaEf)
             c1.eficiencia["efDesvioPadrao"][f"{proc}"].append(dvEf)
 
-            parallelTime = c1.tempo["tpMedio"][f"{proc}"][k] - mediaSeqTime
-            amdahl = c1.obterAmdahl(c1.proc, mediaSeqTime, parallelTime)
+            seq = c1.tempo["tpSerial"][f"{proc}"][f"teste{k+1}"]
+            totalTime = c1.tempo["tpMedio"][f"{proc}"][k]
+            seqResult = c1.calculaPorcent(seq, totalTime)
+            mediaSeqTime = np.average(seqResult)
+            print("MEDIASEQTIME: ", mediaSeqTime)
+
+            c1.tempo["tpSerialMedio"].append(mediaSeqTime)
+
+            dvSeqTime = np.std(seqResult)
+            c1.tempo["tpSerialDesvioPadrao"].append(dvSeqTime)
+
+            amdahl = c1.obterAmdahl(c1.proc, mediaSeqTime)
             c1.amdahl.append(amdahl)
             k += 1
 
-    print(c1.tempo, "\n\n\n\n\n")
-    print(c1.speedup, "\n\n\n\n\n")
-    print(c1.eficiencia, "\n\n\n\n\n")
+    print("TempoMedio: ", c1.tempo["tpMedio"], "\n\n\n\n\n")
+    print("DesvioPadrao: ", c1.tempo["tpDesvioPadrao"], "\n\n\n\n\n")
+
+    print("MedioSerial: ", c1.tempo["tpSerialMedio"], "\n\n\n\n\n")
+    print("DesvioPadraoSerial: ", c1.tempo["tpSerialDesvioPadrao"], "\n\n\n\n\n")
+
+    print("speedupMedio: ", c1.speedup["spMedio"], "\n\n\n\n\n")
+    print("speedupDsvioPadrao: ", c1.speedup["spDesvioPadrao"], "\n\n\n\n\n")
+
+    print("eficiencia media: ", c1.eficiencia["efMedio"], "\n\n\n\n\n")
+    print("eficiecniaDesvioPadrao: ", c1.eficiencia["efDesvioPadrao"], "\n\n\n\n\n")
+
     print(c1.amdahl, "\n\n\n\n\n")
 
 

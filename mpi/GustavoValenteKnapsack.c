@@ -15,12 +15,9 @@ void print_matriz(int **m, int linhas, int colunas, int taskid, int val,
                   int peso);
 void free_matrix(int **mat);
 
-int **bcastValues(int taskid, int **matriz, int root, int size, int sizeCol,
-                  int sizeColExtra);
 void imprimeInformacoesDaMochila(int capacidade, int quantidadeItens,
                                  int *valores, int *pesos);
-void envia_mensagens_iniciais(int rows, int size, int *wt, int *val, int cols,
-                              int itens, int capacidade);
+void envia_mensagens_iniciais(int rows, int size, int *wt, int *val);
 int *recebe_pesos(int *wt, int rows, MPI_Status status);
 int *recebe_valores(int *val, int rows, MPI_Status status);
 int **alocaMatriz(int subMatrizesLinhas, int cols, int taskid, int size,
@@ -59,8 +56,12 @@ int main() {
   int rows, cols;
   int itens, capacidade;
   int *valores, *pesos;
+  if (taskid == size - 1)
+    gettimeofday(&t0, 0);
 
   if (taskid == 0) {
+    gettimeofday(&serialIni, 0);
+
     scanf("%d %d", &itens, &capacidade);
     valores = (int *)calloc(itens, sizeof(int));
     pesos = (int *)calloc(itens, sizeof(int));
@@ -68,8 +69,8 @@ int main() {
     rows = itens + 1;
     cols = capacidade + 1;
     leArquivosDeEntrada(pesos, valores, itens);
-    // gettimeofday(&serialFim, 0);
-    // serialTime += timedifference_msec(serialIni, serialFim);
+    gettimeofday(&serialFim, 0);
+    serialTime += timedifference_msec(serialIni, serialFim);
   }
 
   MPI_Bcast(&cols, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -77,13 +78,9 @@ int main() {
   MPI_Bcast(&itens, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&capacidade, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  // printf("taskid %d, cols: %d, rows: %d, itens: %d, capacidade:%d\n", taskid,
-  //        cols, rows, itens, capacidade);
-
   if (taskid == 0) {
     gettimeofday(&serialIni, 0);
-    envia_mensagens_iniciais(rows, size, pesos, valores, cols, itens,
-                             capacidade);
+    envia_mensagens_iniciais(rows, size, pesos, valores);
     gettimeofday(&serialFim, 0);
     serialTime += timedifference_msec(serialIni, serialFim);
   }
@@ -120,8 +117,6 @@ int main() {
     elapsed = timedifference_msec(t0, t1);
     gettimeofday(&serialFim, 0);
     serialTime += timedifference_msec(serialIni, serialFim);
-
-    // Para ver os tempos funcionando, basta descomentar essas duas linhas.
     // printf("serialTime: %f\n", serialTime);
     // printf("time: %f\n", elapsed);
   }
@@ -136,83 +131,76 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
                       float *serialTime) {
 
   // Matriz para memoization
-  // int recvRank = (taskid - 1) % size; // rank to receive data
-  // int sendRank = (taskid + 1) % size; // rank to send data
-  // printf("cols: %d e %d\n", cols, size);
-  int **matriz = get_matrix(2, cols);
+  int recvRank = (taskid - 1) % size; // rank to receive data
+  int sendRank = (taskid + 1) % size; // rank to send data
+  int **matriz = NULL;
+  int subMatrizesLinhas = itens / size;
+  int subMatrizesLinhasExtras = 0;
+
   int subMatrizesColunas = capacidade / size;
-  int subMatrizesColunasExtras = capacidade % size;
+  int subMatrizesColunasExtras = 0;
 
-  int i, j;
-  for (i = 0; i < itens; i++) {
-    int bound = (subMatrizesColunas * (taskid + 1)) + subMatrizesColunasExtras;
-    int iniCol = (subMatrizesColunas * taskid) + 1;
-    // Indica se vai usar a linha 0 ou 1.
-    int iGlobal = i % 2 == 0 ? 1 : 0;
-    for (j = iniCol; j <= bound; j++) {
-      int auxI;
-      int auxJ;
-      int result;
+  int iniCol;
 
-      matriz = resolvedorBloco(matriz, i, j, valores, pesos, iGlobal);
-      // auxI = iGlobal;
-      // auxJ = j;
-      // result = matriz[auxI][auxJ];
+  matriz = alocaMatriz(subMatrizesLinhas, cols, taskid, size,
+                       subMatrizesLinhasExtras, matriz, itens, capacidade);
 
-      // for (int i = 0; i < size; i++) {
-      //   matriz = bcastValues(auxI, auxJ, result, matriz, i);
-      // }
-      print_matriz(matriz, 2, cols, taskid, valores[i], pesos[i]);
+  // printf("%d e %d\n", itens, capacidade);
+  int result = -1;
+  int tags = 0;
+  for (int k = 0; k < size; k++) {
+    int iGlobal;
+    iGlobal = (subMatrizesLinhas * taskid);
+
+    if (k == size - 1)
+      subMatrizesColunasExtras = capacidade % size;
+
+    if (taskid > 0) {
+      matriz = recebeLinha(matriz, recvRank, k, cols, status);
+      tags += 1;
     }
-    for (int i = 0; i < size; i++) {
-      matriz = bcastValues(taskid, matriz, i, size, subMatrizesColunas,
-                           subMatrizesColunasExtras);
+
+    tags += 1;
+    if (taskid == size - 1)
+      subMatrizesLinhasExtras = itens % size;
+
+    for (int i = 0; i < subMatrizesLinhas + subMatrizesLinhasExtras; i++) {
+
+      iniCol = (k * subMatrizesColunas) + 1;
+      // printf("iniCol: %d\n", iniCol);
+      int bound = (subMatrizesColunas * (k + 1)) + subMatrizesColunasExtras;
+      gettimeofday(&ini, 0);
+      for (int j = iniCol; j <= bound; j++) {
+        resolvedorBloco(matriz, i, j, valores, pesos, iGlobal);
+      }
+      gettimeofday(&fim, 0);
+      *serialTime += timedifference_msec(ini, fim);
+
+      if (taskid == size - 1)
+        result = matriz[i + 1][bound];
+
+      iGlobal += 1;
+    }
+
+    if (taskid < size - 1) {
+      matriz = enviaLinha(matriz, sendRank, k, cols, subMatrizesLinhas);
     }
   }
-
-  // int retval = -1;
-  // MPI_Barrier(MPI_COMM_WORLD);
-  // if (taskid == size - 1) {
-  //   int valor1 = matriz[0][capacidade - 1];
-  //   int valor2 = matriz[1][capacidade - 1];
-  //   free_matrix(matriz);
-  //   if (valor1 > valor2)
-  //     return valor2;
-  //   return valor1;
-  // }
   free_matrix(matriz);
-  return 0;
-}
 
-int **bcastValues(int taskid, int **matriz, int root, int size, int sizeCol,
-                  int sizeColExtra) {
-
-  if (taskid != size - 1) {
-    MPI_Bcast(&matriz[root] + (taskid * sizeCol), sizeCol, MPI_INT, root,
-              MPI_COMM_WORLD);
-  } else {
-    MPI_Bcast(&matriz[root] + (taskid * sizeCol) + sizeColExtra,
-              sizeCol + sizeColExtra, MPI_INT, root, MPI_COMM_WORLD);
-  }
-
-  return matriz;
+  return result;
 }
 
 int **resolvedorBloco(int **matriz, int i, int j, int *valores, int *pesos,
                       int iGlobal) {
 
-  int iAux = 0;
-  if (iGlobal == 0) {
-    iAux = 1;
-  }
+  if (pesos[iGlobal] <= j) {
+    int previous_value = matriz[i][j];
+    int replace_items = valores[iGlobal] + matriz[i][j - pesos[iGlobal]];
 
-  if (pesos[i] <= j) {
-    int previous_value = matriz[iAux][j];
-    int replace_items = valores[i] + matriz[iAux][j - pesos[i]];
-
-    matriz[iGlobal][j] = max(previous_value, replace_items);
+    matriz[i + 1][j] = max(previous_value, replace_items);
   } else {
-    matriz[iGlobal][j] = matriz[iAux][j];
+    matriz[i + 1][j] = matriz[i][j];
   }
   return matriz;
 }
@@ -262,15 +250,15 @@ void imprimeInformacoesDaMochila(int capacidade, int quantidadeItens,
   printf("Quantidade de itens: %d\n", quantidadeItens);
   printf("\n");
 
-  // for (int i = 0; i < quantidadeItens; i++) {
-  //   printf("%d ", valores[i]);
-  // }
-  // printf("\n");
+  for (int i = 0; i < quantidadeItens; i++) {
+    printf("%d ", valores[i]);
+  }
+  printf("\n");
 
-  // for (int i = 0; i < quantidadeItens; i++) {
-  //   printf("%d ", pesos[i]);
-  // }
-  // printf("\n");
+  for (int i = 0; i < quantidadeItens; i++) {
+    printf("%d ", pesos[i]);
+  }
+  printf("\n");
 }
 
 // Le o input inicial de dados
@@ -320,15 +308,10 @@ int **get_matrix(int rows, int columns) {
 }
 
 // Envia as mensagens iniciais
-void envia_mensagens_iniciais(int rows, int size, int *wt, int *val, int cols,
-                              int itens, int capacidade) {
+void envia_mensagens_iniciais(int rows, int size, int *wt, int *val) {
   for (int i = 1; i < size; i++) {
     MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
     MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&cols, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&rows, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&itens, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&capacidade, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
   }
 }
 
