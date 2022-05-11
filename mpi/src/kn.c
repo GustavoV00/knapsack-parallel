@@ -15,8 +15,7 @@ void print_matriz(int **m, int linhas, int colunas, int taskid, int val,
                   int peso);
 void free_matrix(int **mat);
 
-int **bcastValues(int taskid, int **matriz, int root, int size, int sizeCol,
-                  int sizeColExtra);
+int **bcastValues(int auxI, int auxJ, int **matriz, int root, int result);
 void imprimeInformacoesDaMochila(int capacidade, int quantidadeItens,
                                  int *valores, int *pesos);
 void envia_mensagens_iniciais(int rows, int size, int *wt, int *val, int cols,
@@ -155,19 +154,15 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
       int result;
 
       matriz = resolvedorBloco(matriz, i, j, valores, pesos, iGlobal);
-      // auxI = iGlobal;
-      // auxJ = j;
-      // result = matriz[auxI][auxJ];
+      auxI = iGlobal;
+      auxJ = j;
+      result = matriz[auxI][auxJ];
 
-      // for (int i = 0; i < size; i++) {
-      //   matriz = bcastValues(auxI, auxJ, result, matriz, i);
-      // }
-      print_matriz(matriz, 2, cols, taskid, valores[i], pesos[i]);
+      for (int i = 0; i < size; i++) {
+        matriz = bcastValues(auxI, auxJ, matriz, i, result);
+      }
     }
-    for (int i = 0; i < size; i++) {
-      matriz = bcastValues(taskid, matriz, i, size, subMatrizesColunas,
-                           subMatrizesColunasExtras);
-    }
+    print_matriz(matriz, 2, cols, taskid, valores[i], pesos[i]);
   }
 
   // int retval = -1;
@@ -184,17 +179,13 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
   return 0;
 }
 
-int **bcastValues(int taskid, int **matriz, int root, int size, int sizeCol,
-                  int sizeColExtra) {
+int **bcastValues(int auxI, int auxJ, int **matriz, int root, int result) {
 
-  if (taskid != size - 1) {
-    MPI_Bcast(&matriz[root] + (taskid * sizeCol), sizeCol, MPI_INT, root,
-              MPI_COMM_WORLD);
-  } else {
-    MPI_Bcast(&matriz[root] + (taskid * sizeCol) + sizeColExtra,
-              sizeCol + sizeColExtra, MPI_INT, root, MPI_COMM_WORLD);
-  }
+  MPI_Bcast(&auxI, 1, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(&auxJ, 1, MPI_INT, root, MPI_COMM_WORLD);
+  MPI_Bcast(&result, 1, MPI_INT, root, MPI_COMM_WORLD);
 
+  matriz[auxI][auxJ] = result;
   return matriz;
 }
 
