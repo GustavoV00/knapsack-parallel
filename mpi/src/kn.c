@@ -15,7 +15,9 @@ void print_matriz(int taskid, int val, int peso, int subColunas,
                   int *dependencias, int *novosDados, int capacidade);
 void free_matrix(int **mat);
 
-int **bcastValues(int auxI, int auxJ, int **matriz, int root, int result);
+int *bcastValues(int taskid, int size, int subMatrizesColunasExtras, int bound,
+                 int subMatrizesColunas, int j, int *dependencia,
+                 int *novosDados);
 void imprimeInformacoesDaMochila(int capacidade, int quantidadeItens,
                                  int *valores, int *pesos);
 void envia_mensagens_iniciais(int rows, int size, int *wt, int *val, int cols,
@@ -28,10 +30,6 @@ int **alocaMatriz(int subMatrizesLinhas, int cols, int taskid, int size,
 int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n);
 int *resolvedorBloco(int *dependencias, int *novosDados, int i, int j,
                      int *valores, int *pesos, int jGlobal);
-int **recebeLinha(int **matriz, int recvRank, int k, int cols,
-                  MPI_Status status);
-int **enviaLinha(int **matriz, int sendRank, int k, int cols,
-                 int subMatrizesLinhas);
 float timedifference_msec(struct timeval t0, struct timeval t1);
 int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
                       int cols, int taskid, int size, MPI_Status status,
@@ -110,20 +108,20 @@ int main() {
       printf("Result: %d\n", result);
   }
 
-  if (taskid == size - 1) {
-    gettimeofday(&serialIni, 0);
-    float elapsed;
+  // if (taskid == size - 1) {
+  //   gettimeofday(&serialIni, 0);
+  //   float elapsed;
 
-    gettimeofday(&t1, 0);
+  //   gettimeofday(&t1, 0);
 
-    elapsed = timedifference_msec(t0, t1);
-    gettimeofday(&serialFim, 0);
-    serialTime += timedifference_msec(serialIni, serialFim);
+  //   elapsed = timedifference_msec(t0, t1);
+  //   gettimeofday(&serialFim, 0);
+  //   serialTime += timedifference_msec(serialIni, serialFim);
 
-    // Para ver os tempos funcionando, basta descomentar essas duas linhas.
-    // printf("serialTime: %f\n", serialTime);
-    // printf("time: %f\n", elapsed);
-  }
+  //   // Para ver os tempos funcionando, basta descomentar essas duas linhas.
+  //   // printf("serialTime: %f\n", serialTime);
+  //   // printf("time: %f\n", elapsed);
+  // }
 
   MPI_Finalize();
   return 0;
@@ -144,14 +142,11 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
   int bound = taskid == size - 1 ? subMatrizesColunasExtras + subMatrizesColunas
                                  : subMatrizesColunas;
 
-  printf("subMatrizesCOlunas: %d e %d\n", subMatrizesColunas,
+  printf("subMatrizesCOlunas: %d | colunaExtras %d\n", subMatrizesColunas,
          subMatrizesColunasExtras);
   int *dependencia = (int *)malloc(cols * sizeof(int));
   int *novosDados = (int *)malloc(bound * sizeof(int));
   for (int i = 0; i < cols; i++) {
-    dependencia[i] = 0;
-  }
-  for (int i = 0; i <= bound; i++) {
     dependencia[i] = 0;
   }
 
@@ -159,55 +154,48 @@ int knapsack_parallel(int capacidade, int *pesos, int *valores, int itens,
   printf("taskid: %d e bound: %d\n", taskid, bound);
   printf("\n\n\n");
   for (i = 0; i < itens; i++) {
-    // if (i > 0)
-    //   MPI_Bcast(dependencia, cols, MPI_INT, 0, MPI_COMM_WORLD);
 
-    for (j = 0; j <= bound; j++) {
+    for (j = 0; j < bound; j++) {
       if (j == 0 && taskid == 0) {
         novosDados[0] = 0;
         continue;
       }
 
       int jGlobal = (subMatrizesColunas * taskid) + j;
-      // printf("jGloba: %d\n", jGlobal);
+      //   // printf("jGloba: %d\n", jGlobal);
       novosDados = resolvedorBloco(dependencia, novosDados, i, j, valores,
                                    pesos, jGlobal);
-
-      // if (j >= subMatrizesColunas && i > 0) {
-      //   dependencia[jGlobal] = novosDados[j];
-      // }
     }
-    print_matriz(taskid, valores[i], pesos[i], bound, dependencia, novosDados,
-                 capacidade);
-    printf("\n");
 
     MPI_Allgather(novosDados, subMatrizesColunas, MPI_INT, dependencia,
                   subMatrizesColunas, MPI_INT, MPI_COMM_WORLD);
 
-    if (taskid == size - 1) {
-      for (j = 0; j <= bound; j++) {
-        int jGlobal = (subMatrizesColunas * taskid) + j;
-        if (j >= subMatrizesColunas) {
-          dependencia[jGlobal] = novosDados[j];
-        }
-      }
-    }
+    dependencia = bcastValues(taskid, size, subMatrizesColunasExtras, bound,
+                              subMatrizesColunas, j, dependencia, novosDados);
   }
   int result = dependencia[cols - 1];
+  if (result == 0)
+    result = -1;
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  free(dependencia);
+  free(novosDados);
   return result;
 }
 
-int **bcastValues(int auxI, int auxJ, int **matriz, int root, int result) {
+int *bcastValues(int taskid, int size, int subMatrizesColunasExtras, int bound,
+                 int subMatrizesColunas, int j, int *dependencia,
+                 int *novosDados) {
 
-  // MPI_Bcast(&auxI, 1, MPI_INT, root, MPI_COMM_WORLD);
-  // MPI_Bcast(&auxJ, 1, MPI_INT, root, MPI_COMM_WORLD);
-  // MPI_Bcast(&result, 1, MPI_INT, root, MPI_COMM_WORLD);
-  MPI_Bcast(&matriz[auxI][auxJ], 1, MPI_INT, root, MPI_COMM_WORLD);
+  if (taskid == size - 1 && subMatrizesColunasExtras != 0) {
+    for (j = 0; j < bound; j++) {
+      int jGlobal = (subMatrizesColunas * taskid) + j;
+      if (j >= subMatrizesColunas) {
+        dependencia[jGlobal] = novosDados[j];
+      }
+    }
+  }
 
-  matriz[auxI][auxJ] = result;
-  return matriz;
+  return dependencia;
 }
 
 int *resolvedorBloco(int *dependencias, int *novosDados, int i, int j,
@@ -228,43 +216,6 @@ int *resolvedorBloco(int *dependencias, int *novosDados, int i, int j,
     novosDados[j] = dependencias[jGlobal];
   }
   return novosDados;
-}
-
-// Envia última linha da matriz
-int **enviaLinha(int **matriz, int sendRank, int k, int cols,
-                 int subMatrizesLinhas) {
-
-  MPI_Send(&matriz[subMatrizesLinhas][0], cols, MPI_INT, sendRank, k,
-           MPI_COMM_WORLD);
-  return matriz;
-}
-
-// Recebe última linha da matriz
-int **recebeLinha(int **matriz, int recvRank, int k, int cols,
-                  MPI_Status status) {
-  MPI_Recv(&matriz[0][0], cols, MPI_INT, recvRank, k, MPI_COMM_WORLD, &status);
-  return matriz;
-}
-
-// ALoca matriz de dados
-int **alocaMatriz(int subMatrizesLinhas, int cols, int taskid, int size,
-                  int subMatrizesLinhasExtras, int **matriz, int itens,
-                  int capacidade) {
-
-  int subMatrizesColsExtras = capacidade % size;
-  if (taskid == 0)
-    matriz = get_matrix(subMatrizesLinhas + 1, cols + subMatrizesColsExtras);
-
-  else if (taskid == size - 1) {
-    subMatrizesLinhasExtras = itens % size;
-    // printf("subMatrizesLinhasExtras: %d\n", subMatrizesLinhasExtras);
-    matriz = get_matrix(subMatrizesLinhas + subMatrizesLinhasExtras + 2,
-                        cols + subMatrizesColsExtras);
-  } else {
-    matriz = get_matrix(subMatrizesLinhas + 2, cols + subMatrizesColsExtras);
-  }
-
-  return matriz;
 }
 
 // Imprime as informações iniciais da mochila
@@ -298,7 +249,7 @@ void print_matriz(int taskid, int val, int peso, int subColunas,
                   int *dependencias, int *novosDados, int capacidade) {
 
   // printf("/***********************************/\n");
-  // printf("Taksid %d imprimiu a matriz: %d e peso %d\n", taskid, val, peso);
+  printf("Taksid %d imprimiu a matriz: %d e peso %d\n", taskid, val, peso);
   for (int i = 0; i <= capacidade; i++) {
     printf("%d ", dependencias[i]);
   }
@@ -340,10 +291,6 @@ void envia_mensagens_iniciais(int rows, int size, int *wt, int *val, int cols,
   for (int i = 1; i < size; i++) {
     MPI_Send(&wt[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
     MPI_Send(&val[0], rows - 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&cols, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&rows, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&itens, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    // MPI_Send(&capacidade, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
   }
 }
 
@@ -377,8 +324,8 @@ int knapsack_serial(int MAXIMUM_CAPACITY, int wt[], int val[], int n) {
         int replace_items = val[i] + V[1 + i - 1][j - wt[i]];
 
         // is it better to keep what we already got,
-        // or is it better to swap whatever we have in the bag that weights up
-        // to `j` and put item `i`?
+        // or is it better to swap whatever we have in the bag that weights
+        // up to `j` and put item `i`?
         V[1 + i][j] = max(previous_value, replace_items);
       } else {
         // can't put item `i`
